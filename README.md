@@ -4,8 +4,9 @@
 the developer from writing most of the boilerplate code that is
 otherwise required to get anything running, while preserving the look
 and feel of WebCL and providing easy access to the underlying raw API.
+See http://toaarnio.github.io/CL.js for documentation.
 
-Please visit [http://webcl.nokiaresearch.com] for demos, tutorials,
+Please visit http://webcl.nokiaresearch.com for demos, tutorials,
 and more information on WebCL.
 
 ## Example ##
