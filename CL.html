@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>CL.js</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, target-densitydpi=160dpi, initial-scale=1.0; maximum-scale=1.0; user-scalable=0;">
+  <link rel="stylesheet" media="all" href="docco-cl-parallel.css" />
+</head>
+<body>
+  <div id="container">
+    <div id="background"></div>
+    
+    <ul class="sections">
+        
+          <li id="title">
+              <div class="annotation">
+                  <h1>CL.js</h1>
+              </div>
+          </li>
+        
+        
+        
+        <li id="section-1">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-1">&#182;</a>
+              </div>
+              <p><strong>CL.js</strong> is a lightweight utility library for <strong>WebCL</strong>.  It
+relieves the developer from writing most of the boilerplate code
+that is otherwise required to get anything running, while
+preserving the look and feel of WebCL and providing easy access to
+the underlying raw API.</p>
+<p>Please visit <a href="http://webcl.nokiaresearch.com">http://webcl.nokiaresearch.com</a> for demos, tutorials,
+and more information on WebCL.</p>
+<h2>Example</h2>
+<p>To get started, we need to include CL.js from our HTML source:</p>
+<pre><code>&lt;script type=&quot;text/javascript&quot; src=&quot;/path/to/CL.js&quot;&gt;&lt;/script&gt;</code></pre>
+<p>Now, let&#39;s initialize the global CL object and populate it with
+information about the WebCL platforms and devices that are
+available in this system:</p>
+<pre><code>CL.setup({ debug: true });</code></pre>
+<p>With debug mode enabled, any exceptions will be reported on the
+console together with helpful information about the function and
+arguments that triggered the exception.  Next, let&#39;s create the CL
+resources that we&#39;re going to need in this example:</p>
+<pre><code>var src = CL.loadSource(&#39;kernels/random.cl&#39;);
+for (var d=0; d &lt; CL.devices.length; d++) {
+  var ctx = CL.createContext({ device: CL.devices[d], name: &#39;device&#39;+d });
+  var buffer1M = ctx.createBuffer({ size: 1024*1024, name: &#39;results&#39; });
+  var kernel = ctx.buildKernel({ source: src });
+  kernel.setArgs(buffer1M);
+  ctx.createCommandQueue({ name: &#39;theQueue&#39; });
+}</code></pre>
+<p>Note that we assigned a plain-text <code>name</code> for each of our contexts,
+buffers and queues. This makes it easy to find the resources that
+we need later on. The Kernel object that we created for each
+Context is assigned the same name as the kernel function in
+<code>random.cl</code>.  For the purposes of this example, let&#39;s assume that
+the kernel function is called <code>generateRandomNumbers</code>. Now, let&#39;s
+proceed to run it on each Device in turn, reading back the results
+into an ArrayBuffer:</p>
+<pre><code>var randomNumbers = new Uint8Array(1024*1024);
+for (var d=0; d &lt; CL.devices.length; d++) {
+   var ctx = CL.getContext(&#39;device&#39;+d);
+   var queue = ctx.getQueue(&#39;theQueue&#39;);
+   var kernel = ctx.getKernel(&#39;generateRandomNumbers&#39;);
+   var buffer1M = ctx.getBuffer(&#39;results&#39;);
+   queue.enqueueKernel(kernel, [randomNumbers.length]);
+   queue.enqueueReadBuffer(buffer1M, randomNumbers);
+   queue.finish();
+   /* Do something with randomNumbers */
+}</code></pre>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="comment">/*
+ * CL.js is written by Tomi Aarnio of Nokia Research Tampere, and
+ * licensed under the Mozilla Public License 2.0 (see LICENSE).
+ */</span></pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-2">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h2">
+                <a class="pilcrow" href="#section-2">&#182;</a>
+              </div>
+              <h2>The CL API</h2>
+<p>The global singleton <code>CL</code> object contains all the properties and
+functionality that are available. CL.js can be safely included
+multiple times from different JavaScript source files.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre><span class="string">"use strict"</span>
+
+<span class="keyword">var</span> CL = CL || { REVISION: <span class="string">'1'</span> };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-3">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-3">&#182;</a>
+              </div>
+              <h3>CL.setup()</h3>
+<p>Initializes the global singleton <code>CL</code> object and populates it the
+Devices and Platforms that are available in this system. This does
+not yet create any native WebCL resources. The following setup
+parameters can be provided:</p>
+<pre><code>CL.setup({ debug: true,      // default: false
+           cleanup: false,   // default: true
+         });</code></pre>
+<p>With the <code>debug</code> flag enabled, any exceptions are reported on the
+console together with helpful information about the function and
+arguments that triggered the exception. The debug flag is disabled
+by default.</p>
+<p>With the <code>cleanup</code> flag enabled, all WebCL resources allocated by
+CL.js over the course of the application are automatically released
+when the user leaves the page, or when an exception occurs. This is
+strongly recommended to avoid memory leaks, so the cleanup flag is
+enabled by default.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.setup = <span class="keyword">function</span>(parameters) {</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-4">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-4">&#182;</a>
+              </div>
+              <h3>CL.platforms</h3>
+<p>Contains all WebCL Platforms that are available in this system,
+as discovered by <code>CL.setup()</code>.  Each Platform typically contains
+one or more Devices, but it can also happen that all devices on a
+particular platform are powered down or otherwise not available.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.platforms = [];</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-5">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-5">&#182;</a>
+              </div>
+              <h3>CL.devices</h3>
+<p>Contains all WebCL Devices that are actually available in this
+system, as discovered by <code>CL.setup()</code>.  Each Device belongs to
+exactly one Platform. Devices that are powered down or otherwise
+not available are not included. Applications should be prepared
+for the possibility that there are no devices available at all.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.devices = [];</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-6">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-6">&#182;</a>
+              </div>
+              <h3>CL.createContext()</h3>
+<p>Creates a new Context <code>for</code> the given device or devices, and
+assigns the given <code>name</code> to the newly created context:</p>
+<pre><code>CL.createContext({ for: aDeviceOrArrayOfDevices,
+                   name: &#39;arbitraryName&#39; });</code></pre>
+<p>For example:</p>
+<pre><code>CL.createContext({ for: CL.devices[0], name: &#39;foo&#39; });</code></pre>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.createContext = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    parameters.<span class="keyword">for</span> = parameters.<span class="keyword">for</span> || self.devices[<span class="number">0</span>];
+    expect(<span class="string">"a Device or an array of Devices"</span>, 
+           parameters.<span class="keyword">for</span> <span class="keyword">instanceof</span> CL.Device ||
+           parameters.<span class="keyword">for</span> <span class="keyword">instanceof</span> Array);
+
+    <span class="keyword">var</span> ctx = <span class="keyword">new</span> CL.Context();
+    <span class="keyword">if</span> (parameters.<span class="keyword">for</span> <span class="keyword">instanceof</span> CL.Device) {
+      ctx.device = parameters.<span class="keyword">for</span>;
+      ctx.devices = [ parameters.<span class="keyword">for</span> ];
+    } <span class="keyword">else</span> <span class="keyword">if</span> (parameters.<span class="keyword">for</span> <span class="keyword">instanceof</span> Array) {
+      ctx.device = parameters.<span class="keyword">for</span>[<span class="number">0</span>];
+      ctx.devices = parameters.<span class="keyword">for</span>;
+    }
+
+    ctx.platform = ctx.device.platform;
+    <span class="keyword">var</span> devicePeers = [];
+    <span class="keyword">for</span> (<span class="keyword">var</span> d=<span class="number">0</span>; d &lt; ctx.devices.length; d++) {
+      devicePeers[d] = ctx.devices[d].peer;
+    }
+    ctx.peer = WebCL.createContext([CL.CONTEXT_PLATFORM, ctx.platform.peer], devicePeers);
+    <span class="keyword">for</span> (<span class="keyword">var</span> d=<span class="number">0</span>; d &lt; ctx.devices.length; d++) {
+      ctx.devices[d].contexts.push(ctx);
+    }
+    ctx.name = parameters.name;
+    <span class="keyword">return</span> ctx;
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-7">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-7">&#182;</a>
+              </div>
+              <h3>CL.getContext()</h3>
+<p>Retrieves the Context by the given plain-text <code>name</code>, or null if
+no context by that name exists for any Device.  See
+<code>CL.createContext</code> for how to assign a name to a context.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.getContext = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> d=<span class="number">0</span>; d &lt; self.devices.length; d++) {
+      <span class="keyword">var</span> result = self.devices[d].getContext(name);
+      <span class="keyword">if</span> (result !== <span class="literal">null</span>) {
+        <span class="keyword">return</span> result;
+      }
+    }
+    console.log(<span class="string">"CL.js: Warning: context "</span>+name+<span class="string">" not found."</span>);
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-8">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-8">&#182;</a>
+              </div>
+              <h3>CL.loadSource()</h3>
+<p>Loads a kernel source code file from the given <code>uri</code> via http
+POST or, failing that, http GET. POST is preferred in order to
+avoid obsolete copies of the kernel getting served from some
+proxy or cache.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.loadSource = <span class="keyword">function</span>(uri) {
+    <span class="keyword">return</span> xhrLoad(uri);
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-9">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-9">&#182;</a>
+              </div>
+              <h3>CL.releaseAll()</h3>
+<p>Invalidates all WebCL objects and releases the memory and other
+resources held up by their native OpenCL counterparts.  This is
+crucially important, because JavaScript garbage collectors will
+typically not release the resources in any reasonable time, not
+even when the user reloads or leaves the page.</p>
+<p>By default, <code>CL.releaseAll</code> is called automatically when leaving
+the page, i.e., when the <code>window.onbeforeunload</code> event fires, or
+when an exception occurs in CL.js. If absolutely necessary, you
+can disable this behavior at the setup stage: <code>CL.setup({
+cleanup: false });</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (CL.Impl.CLEANUP) {
+      <span class="keyword">for</span> (<span class="keyword">var</span> d=<span class="number">0</span>; d &lt; CL.devices.length; d++) {
+        CL.devices[d].releaseAll();
+      }
+    }
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-10">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-10">&#182;</a>
+              </div>
+              <h3>CL.enumToString()</h3>
+<p>Returns the human-readable string representation of the given
+WebCL enumerated value. For example, <code>CL.enumToString(-10)</code>
+will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  CL.enumToString = <span class="keyword">function</span>(enumValue) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> e <span class="keyword">in</span> CL) {
+      <span class="keyword">if</span> (CL[e] === enumValue) {
+        <span class="keyword">return</span> e;
+      }
+    }
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-11">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-11">&#182;</a>
+              </div>
+              <h3>Implementation</h3>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  init(parameters);
+
+  <span class="function"><span class="keyword">function</span> <span class="title">init</span><span class="params">(parameters)</span> {</span>
+    console.log(<span class="string">"init: "</span>, parameters);
+    parameters = parameters || {};
+    <span class="keyword">var</span> temp = self.setup;
+    <span class="keyword">delete</span> self.setup;
+    CL.Impl = <span class="keyword">new</span> CL.Implementation();
+    CL.Impl.DEBUG = parameters.debug || <span class="literal">false</span>;
+    CL.Impl.CLEANUP = !(parameters.cleanup === <span class="literal">false</span>);
+    CL.Impl.addCleanupWrappers(self, <span class="string">"CL"</span>);
+    self.setup = temp;
+    <span class="keyword">if</span> (window.WebCL) {
+      setupEnums();
+      self.platforms.length = <span class="number">0</span>;
+      self.devices.length = <span class="number">0</span>;
+      self.platforms = platformFactory();
+      <span class="keyword">for</span> (<span class="keyword">var</span> p=<span class="number">0</span>; p &lt; self.platforms.length; p++) {
+        self.devices = self.devices.concat(self.platforms[p].devices);
+      }
+    }
+    <span class="keyword">if</span> (CL.Impl.CLEANUP) {
+      window.onbeforeunload = CL.releaseAll;
+    };
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">platformFactory</span><span class="params">()</span> {</span>
+    <span class="keyword">var</span> numGPU = <span class="number">0</span>;
+    <span class="keyword">var</span> numCPU = <span class="number">0</span>;
+
+    <span class="function"><span class="keyword">function</span> <span class="title">deviceFactory</span><span class="params">(platform)</span> {</span>
+      <span class="keyword">var</span> clDevices = [];
+      <span class="keyword">var</span> devices = platform.peer.getDevices(CL.DEVICE_TYPE_ALL);
+      <span class="keyword">for</span> (<span class="keyword">var</span> d=<span class="number">0</span>; d &lt; devices.length; d++) {
+        <span class="keyword">var</span> isAvailable = devices[d].getDeviceInfo(CL.DEVICE_AVAILABLE);
+        <span class="keyword">var</span> isCompilerAvailable = devices[d].getDeviceInfo(CL.DEVICE_COMPILER_AVAILABLE);
+        <span class="keyword">if</span> (isAvailable &amp;&amp; isCompilerAvailable) {
+          <span class="keyword">var</span> device = <span class="keyword">new</span> CL.Device();
+          device.isAvailable = <span class="literal">true</span>;
+          device.peer = devices[d];
+          device.platform = platform;
+          device.name = device.peer.getDeviceInfo(CL.DEVICE_NAME);
+          device.version = device.peer.getDeviceInfo(CL.DEVICE_VERSION);
+          device.vendor = device.peer.getDeviceInfo(CL.DEVICE_VENDOR);
+          <span class="keyword">var</span> type = device.peer.getDeviceInfo(CL.DEVICE_TYPE);
+          <span class="keyword">if</span> (type === CL.DEVICE_TYPE_CPU) {
+            device.type = <span class="string">'CPU'</span>;
+            device.id = <span class="string">'CPU'</span> + (numCPU+<span class="number">1</span>);
+            numCPU++;
+          } <span class="keyword">else</span> {
+            device.type = <span class="string">'GPU'</span>;
+            device.id = <span class="string">'GPU'</span> + (numGPU+<span class="number">1</span>);
+            numGPU++;
+          }
+          clDevices.push(device);
+        }
+      }
+      <span class="keyword">return</span> clDevices;
+    };
+
+    <span class="keyword">var</span> clPlatforms = [];
+    <span class="keyword">var</span> platforms = WebCL.getPlatforms();
+    <span class="keyword">for</span> (<span class="keyword">var</span> p=<span class="number">0</span>; p &lt; platforms.length; p++) {
+      clPlatforms[p] = <span class="keyword">new</span> CL.Platform();
+      clPlatforms[p].peer = platforms[p];
+      clPlatforms[p].vendor = platforms[p].getPlatformInfo(CL.PLATFORM_VENDOR);
+      clPlatforms[p].devices = deviceFactory(clPlatforms[p]);
+    }
+    <span class="keyword">return</span> clPlatforms;
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">setupEnums</span><span class="params">()</span> {</span>
+    <span class="keyword">for</span> (<span class="keyword">var</span> legacyEnumName <span class="keyword">in</span> WebCL) {
+      <span class="keyword">if</span> (<span class="keyword">typeof</span> WebCL[legacyEnumName] === <span class="string">'number'</span>) {
+        <span class="keyword">var</span> newEnumName = legacyEnumName.slice(<span class="number">3</span>);
+        CL[newEnumName] = WebCL[legacyEnumName];
+      }
+    }
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">xhrLoad</span><span class="params">(uri)</span> {</span>
+    <span class="keyword">var</span> xhr = <span class="keyword">new</span> XMLHttpRequest();
+    <span class="keyword">var</span> response = xhrTry(<span class="string">"POST"</span>);
+    <span class="keyword">return</span> response || xhrTry(<span class="string">"GET"</span>);
+
+    <span class="function"><span class="keyword">function</span> <span class="title">xhrTry</span><span class="params">(method)</span> {</span>
+      <span class="keyword">try</span> {
+        xhr.open(method, uri, <span class="literal">false</span>);
+        xhr.send(<span class="literal">null</span>);
+        <span class="keyword">return</span> (xhr.status === <span class="number">200</span>) ? xhr.responseText : <span class="literal">null</span>;
+      } <span class="keyword">catch</span> (e) {
+        <span class="keyword">return</span> <span class="literal">null</span>;
+      }
+    };
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">expect</span><span class="params">(msg, booleanResult)</span> {</span>
+    <span class="keyword">if</span> (booleanResult !== <span class="literal">true</span>) {
+      <span class="keyword">throw</span> <span class="string">"Invalid Arguments: Expecting "</span> + msg + <span class="string">"."</span>;
+    }
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">isTrueForAll</span><span class="params">(arr, property)</span> {</span> 
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; arr.length; i++) { 
+      <span class="keyword">if</span> (array[i][property] === <span class="literal">false</span>) {
+        <span class="keyword">return</span> <span class="literal">false</span>;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">true</span>;
+  };
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-12">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-12">&#182;</a>
+              </div>
+              <h3>CL.Platform</h3>
+<p>Automatically instantiated by <code>CL.setup()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Platform = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Platform.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.vendor = <span class="literal">null</span>;
+  <span class="keyword">this</span>.devices = [];
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-13">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-13">&#182;</a>
+              </div>
+              <h3>CL.Device</h3>
+<p>Automatically instantiated by <code>CL.setup()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Device = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Device.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.isAvailable = <span class="literal">false</span>;
+  <span class="keyword">this</span>.platform = <span class="literal">null</span>;
+  <span class="keyword">this</span>.type = <span class="literal">null</span>;
+  <span class="keyword">this</span>.name = <span class="literal">null</span>;
+  <span class="keyword">this</span>.version = <span class="literal">null</span>;
+  <span class="keyword">this</span>.vendor = <span class="literal">null</span>;
+  <span class="keyword">this</span>.contexts = [];
+
+  <span class="keyword">this</span>.getContext = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; self.contexts.length; i++) {
+      <span class="keyword">if</span> ((self.contexts[i].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length == self.contexts[i].name.length)) {
+        <span class="keyword">return</span> self.contexts[i];
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    CL.Impl.clearArray(self.contexts);
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-14">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-14">&#182;</a>
+              </div>
+              <h3>CL.Context</h3>
+<p>Instantiated by <code>CL.createContext(()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Context = <span class="keyword">function</span>(parameters) {
+
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Context.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.platform = <span class="literal">null</span>;
+  <span class="keyword">this</span>.device = <span class="literal">null</span>;
+  <span class="keyword">this</span>.devices = [];
+  <span class="keyword">this</span>.queues = [];
+  <span class="keyword">this</span>.buffers = [];
+  <span class="keyword">this</span>.images = [];
+  <span class="keyword">this</span>.programs = [];
+
+  <span class="keyword">this</span>.createCommandQueue = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    <span class="keyword">var</span> name = parameters.name || self.queues.length.toString();
+    <span class="keyword">var</span> queue = <span class="keyword">new</span> CL.CommandQueue();
+    queue.peer = self.peer.createCommandQueue(self.device.peer, <span class="literal">null</span>);
+    queue.context = self;
+    queue.name = name;
+    self.queues.push(queue);
+    <span class="keyword">return</span> queue;
+  };
+
+  <span class="keyword">this</span>.createBuffer = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    <span class="keyword">var</span> byteLength = parameters.size || <span class="number">1024</span>;
+    <span class="keyword">var</span> memFlags = parameters.flags || CL.MEM_READ_WRITE;
+    <span class="keyword">var</span> name = parameters.name || self.buffers.length.toString();
+    <span class="keyword">var</span> buffer = <span class="keyword">new</span> CL.Buffer();
+    buffer.peer = self.peer.createBuffer(memFlags, byteLength);
+    buffer.flags = memFlags;
+    buffer.size = byteLength;
+    buffer.context = self;
+    buffer.name = name;
+    self.buffers.push(buffer);
+    <span class="keyword">return</span> buffer;
+  };
+
+  <span class="keyword">this</span>.createImage = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    <span class="keyword">var</span> width = parameters.width || <span class="number">256</span>;
+    <span class="keyword">var</span> height = parameters.height || <span class="number">256</span>;
+    <span class="keyword">var</span> memFlags = parameters.flags || CL.MEM_READ_WRITE;
+    <span class="keyword">var</span> imgFormat = parameters.format || { channelOrder : CL.RGBA, channelDataType : CL.UNSIGNED_INT8 };
+    <span class="keyword">var</span> name = parameters.name || self.images.length.toString();
+    <span class="keyword">var</span> image = <span class="keyword">new</span> CL.Image();
+    image.peer = self.peer.createImage2D(memFlags, imgFormat, width, height, <span class="number">0</span>);
+    image.flags = memFlags;
+    image.format = imgFormat;
+    image.width = width;
+    image.height = height;
+    image.context = self;
+    image.name = name;
+    self.images.push(image);
+    <span class="keyword">return</span> image;
+  };
+
+  <span class="keyword">this</span>.buildProgram = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    <span class="keyword">var</span> program = <span class="keyword">new</span> CL.Program(parameters);
+    parameters.context = self;
+    program.build(parameters);
+    self.programs.push(program);
+    <span class="keyword">return</span> program;
+  };
+
+  <span class="keyword">this</span>.buildKernels = <span class="keyword">function</span>(parameters) {
+    <span class="keyword">var</span> program = self.buildProgram(parameters);
+    <span class="keyword">return</span> program.kernels;
+  };
+
+  <span class="keyword">this</span>.buildKernel = <span class="keyword">function</span>(parameters) {
+    <span class="keyword">return</span> self.buildKernels(parameters)[<span class="number">0</span>];
+  };
+
+  <span class="keyword">this</span>.getBuffer = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> b=<span class="number">0</span>; b &lt; self.buffers.length; b++) {
+      <span class="keyword">if</span> ((self.buffers[b].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length === self.buffers[b].name.length)) {
+        <span class="keyword">return</span> self.buffers[b];
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="keyword">this</span>.getKernel = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> p=<span class="number">0</span>; p &lt; self.programs.length; p++) {
+      <span class="keyword">var</span> result = self.programs[p].getKernel(name);
+      <span class="keyword">if</span> (result !== <span class="literal">null</span>) {
+        <span class="keyword">return</span> result;
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="keyword">this</span>.getQueue = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> q=<span class="number">0</span>; q &lt; self.queues.length; q++) {
+      <span class="keyword">if</span> ((self.queues[q].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length === self.queues[q].name.length)) {
+        <span class="keyword">return</span> self.queues[q];
+      }
+    }
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      console.log(<span class="string">"CL.Context.releaseAll"</span>);
+      CL.Impl.clearArray(self.programs);
+      CL.Impl.clearArray(self.queues);
+      CL.Impl.clearArray(self.buffers);
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.Context.peer: de-initialized"</span>;
+    }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  CL.Impl.addCleanupWrappers(self, <span class="string">"CL.Context"</span>);
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-15">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-15">&#182;</a>
+              </div>
+              <h3>CL.CommandQueue</h3>
+<p>Instantiated by <code>CL.Context.createCommandQueue()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.CommandQueue = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.CommandQueue.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+
+  <span class="keyword">this</span>.enqueueKernel = <span class="keyword">function</span>(kernel, globalws) {
+    self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+  };
+
+  <span class="keyword">this</span>.enqueueWriteBuffer = <span class="keyword">function</span>(dstBuffer, srcArray) {
+    <span class="keyword">var</span> numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
+    self.peer.enqueueWriteBuffer(dstBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, srcArray, []);
+  };
+
+  <span class="keyword">this</span>.enqueueReadBuffer = <span class="keyword">function</span>(srcBuffer, dstArray) {
+    <span class="keyword">var</span> numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
+    self.peer.enqueueReadBuffer(srcBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, dstArray, []);
+  };
+
+  <span class="keyword">this</span>.finish = <span class="keyword">function</span>() {
+    self.peer.finish();
+  };
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.CommandQueue.peer: de-initialized"</span>;
+      self.context = <span class="literal">null</span>;
+   }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  CL.Impl.addCleanupWrappers(self, <span class="string">"CL.CommandQueue"</span>);
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-16">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-16">&#182;</a>
+              </div>
+              <h3>CL.Program</h3>
+<p>Instantiated by <code>CL.Context.buildProgram()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Program = <span class="keyword">function</span>(parameters) {
+
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Program.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.built = <span class="literal">false</span>;
+  <span class="keyword">this</span>.compilerOpts = <span class="literal">null</span>;
+  <span class="keyword">this</span>.compilerDefs = <span class="literal">null</span>;
+  <span class="keyword">this</span>.kernels = [];
+  <span class="keyword">this</span>.kernel = <span class="literal">null</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.source = <span class="literal">null</span>;
+  <span class="keyword">this</span>.uri = <span class="literal">null</span>;
+
+  <span class="keyword">this</span>.build = <span class="keyword">function</span>(parameters) {
+    parameters = parameters || {};
+    self.context = parameters.context;
+    self.compilerOpts = parameters.opts || <span class="string">""</span>;
+    self.compilerDefs = <span class="string">""</span>;
+    <span class="keyword">for</span> (<span class="keyword">var</span> d <span class="keyword">in</span> parameters.defines) {
+      self.compilerDefs += <span class="string">"-D"</span> + d + <span class="string">"="</span> + parameters.defines[d] + <span class="string">" "</span>;
+    }
+    <span class="keyword">if</span> (self.context &amp;&amp; self.source) {
+      <span class="keyword">try</span> {
+        self.peer = self.context.peer.createProgramWithSource(self.source);
+        self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
+        self.kernels = kernelFactory(self);
+        self.kernel = self.kernels[<span class="number">0</span>];
+        self.built = <span class="literal">true</span>;
+      } <span class="keyword">catch</span>(e) {
+        <span class="keyword">var</span> info = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+        console.log(<span class="string">"["</span> + self.context.platform.vendor + <span class="string">"]"</span>, e, info);
+        <span class="keyword">throw</span> e + info;
+      }
+    } <span class="keyword">else</span> {
+      <span class="keyword">throw</span> <span class="string">"Cannot build program: Kernel source code or WebCLContext missing."</span>;
+    }
+  };
+
+  <span class="keyword">this</span>.getKernel = <span class="keyword">function</span>(name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> k=<span class="number">0</span>; k &lt; self.kernels.length; k++) {
+      <span class="keyword">if</span> ((self.kernels[k].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length == self.kernels[k].name.length)) {
+        <span class="keyword">return</span> self.kernels[k];
+      }
+    }
+    console.log(<span class="string">"CL.js: Warning: kernel "</span>+name+<span class="string">" not found."</span>);
+    <span class="keyword">return</span> <span class="literal">null</span>;
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  init(parameters);
+  CL.Impl.addCleanupWrappers(self, <span class="string">"CL.Program"</span>);
+
+  <span class="function"><span class="keyword">function</span> <span class="title">init</span><span class="params">(parameters)</span> {</span>
+    parameters = parameters || {};
+    <span class="keyword">if</span> (parameters.uri) {
+      self.uri = parameters.uri;
+      self.source = CL.loadSource(parameters.uri);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (parameters.source) {
+      self.source = parameters.source;
+    }
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">kernelFactory</span><span class="params">(program)</span> {</span>
+    <span class="keyword">var</span> clKernels = [];
+    <span class="keyword">var</span> context = program.context;
+    <span class="keyword">var</span> device = program.context.device;
+    <span class="keyword">var</span> kernels = program.peer.createKernelsInProgram();
+    <span class="keyword">for</span> (<span class="keyword">var</span> k=<span class="number">0</span>; k &lt; kernels.length; k++) {
+      clKernels[k] = <span class="keyword">new</span> CL.Kernel();
+      clKernels[k].peer = kernels[k];
+      clKernels[k].program = program;
+      clKernels[k].context = context;
+      clKernels[k].device = device;
+      clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
+      clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
+      clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+      clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
+      clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
+    }
+    <span class="keyword">return</span> clKernels;
+  };
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.Program.peer: de-initialized"</span>;
+      self.kernel = <span class="literal">null</span>;
+      self.context = <span class="literal">null</span>;
+      self.uri = <span class="literal">null</span>;
+      self.source = <span class="literal">null</span>;
+      self.built = <span class="literal">false</span>;
+      self.compilerOpts = <span class="literal">null</span>;
+      self.compilerDefs = <span class="literal">null</span>;
+      CL.Impl.clearArray(self.kernels);
+    }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-17">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-17">&#182;</a>
+              </div>
+              <h3>CL.Kernel</h3>
+<p>Instantiated by <code>CL.Program.build()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Kernel = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Kernel.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.name = <span class="string">"uninitialized"</span>;
+  <span class="keyword">this</span>.numArgs = -<span class="number">1</span>;
+  <span class="keyword">this</span>.workGroupSize = -<span class="number">1</span>;
+  <span class="keyword">this</span>.localMemSize = -<span class="number">1</span>;
+  <span class="keyword">this</span>.privateMemSize = -<span class="number">1</span>;
+  <span class="keyword">this</span>.program = <span class="literal">null</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.device = <span class="literal">null</span>;
+  
+  <span class="keyword">this</span>.setArg = <span class="keyword">function</span>(index, value) {
+    <span class="keyword">if</span> (value <span class="keyword">instanceof</span> CL.Buffer || value <span class="keyword">instanceof</span> CL.Image) {
+      <span class="keyword">this</span>.peer.setKernelArg(index, value.peer);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> value === <span class="string">'number'</span>) {
+      <span class="keyword">if</span> (Math.floor(value) !== value) {
+        <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.FLOAT);
+      } <span class="keyword">else</span> {
+        <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.UINT);
+      }
+    } <span class="keyword">else</span> <span class="keyword">if</span> (value.buffer <span class="keyword">instanceof</span> ArrayBuffer) {
+      <span class="keyword">this</span>.peer.setKernelArg(index, value);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (value <span class="keyword">instanceof</span> Array) {
+      <span class="keyword">throw</span> <span class="string">"CL.Kernel.setArg: JavaScript Array arguments not supported."</span>;
+    } <span class="keyword">else</span> {
+      console.log(<span class="string">"Unrecognized kernel argument type: "</span>, value);
+    }
+  };
+
+  <span class="keyword">this</span>.setArgs = <span class="keyword">function</span>() {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; arguments.length; i++) {
+      self.setArg(i, arguments[i]);
+    }
+  };
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.Kernel.peer: de-initialized"</span>;
+      self.name = <span class="string">"deinitialized"</span>;
+      self.program = <span class="literal">null</span>;
+      self.context = <span class="literal">null</span>;
+      self.device = <span class="literal">null</span>;
+    }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  CL.Impl.addCleanupWrappers(self, <span class="string">"CL.Kernel"</span>);
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-18">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-18">&#182;</a>
+              </div>
+              <h3>CL.Buffer</h3>
+<p>Instantiated by <code>CL.Context.createBuffer()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Buffer = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Buffer.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.flags = -<span class="number">1</span>;
+  <span class="keyword">this</span>.size = -<span class="number">1</span>;
+  <span class="keyword">this</span>.name = <span class="string">"uninitialized"</span>;
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.Buffer.peer: de-initialized"</span>;
+      self.name = <span class="string">"deinitialized"</span>;
+      self.context = <span class="literal">null</span>;
+      self.flags = -<span class="number">1</span>;
+      self.size = -<span class="number">1</span>;
+    }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-19">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-19">&#182;</a>
+              </div>
+              <h3>CL.Image</h3>
+<p>Instantiated by <code>CL.Context.createImage()</code></p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Image = <span class="keyword">function</span>(parameters) {
+  <span class="keyword">this</span>.peer = <span class="string">"CL.Image.peer: not yet initialized"</span>;
+  <span class="keyword">this</span>.context = <span class="literal">null</span>;
+  <span class="keyword">this</span>.flags = -<span class="number">1</span>;
+  <span class="keyword">this</span>.format = -<span class="number">1</span>;
+  <span class="keyword">this</span>.width = -<span class="number">1</span>;
+  <span class="keyword">this</span>.height = -<span class="number">1</span>;
+  <span class="keyword">this</span>.name = <span class="string">"uninitialized"</span>;
+
+  <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
+    <span class="keyword">if</span> (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = <span class="string">"CL.Image.peer: de-initialized"</span>;
+      self.name = <span class="string">"deinitialized"</span>;
+      self.context = <span class="literal">null</span>;
+      self.flags = -<span class="number">1</span>;
+      self.format = -<span class="number">1</span>;
+      self.width = -<span class="number">1</span>;
+      self.height = -<span class="number">1</span>;
+      self.size = -<span class="number">1</span>;
+    }
+  };
+
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+};</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-20">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h2">
+                <a class="pilcrow" href="#section-20">&#182;</a>
+              </div>
+              <h2>Internal Implementation</h2>
+<p>Internal helper and wrapper functions that are not supposed to be
+called from outside CL.js.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>CL.Implementation = <span class="keyword">function</span>() {</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-21">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-21">&#182;</a>
+              </div>
+              <p>The <code>DEBUG</code> flag enables/disables debug messages on the
+console at runtime.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.DEBUG = <span class="literal">false</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-22">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-22">&#182;</a>
+              </div>
+              <p>The <code>CLEANUP</code> flag enables/disables automatic release of WebCL
+resources when leaving the page or when an exception occurs.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.CLEANUP = <span class="literal">true</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-23">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h4">
+                <a class="pilcrow" href="#section-23">&#182;</a>
+              </div>
+              <h4>clearArray</h4>
+<p>Recurses through all CL objects in <code>theArray</code> and releases their
+native resources.  Will fail if <code>theArray</code> is not an Array or
+contains anything else than CL.js objects.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.clearArray = <span class="keyword">function</span>(theArray) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; theArray.length; i++) {
+      theArray[i].releaseAll();
+      <span class="keyword">delete</span> theArray[i];
+    }
+    theArray.length = <span class="number">0</span>;
+  };
+  
+  <span class="keyword">var</span> self = <span class="keyword">this</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-24">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h4">
+                <a class="pilcrow" href="#section-24">&#182;</a>
+              </div>
+              <h4>addCleanupWrappers</h4>
+<p>Wraps a try-catch block around each function in <code>theObject</code>.
+Internal functions (prefixed by an underscore) are not wrapped.</p>
+<p>If an exception occurs in a wrapped function at runtime, all CL
+resources created by CL.js are automatically released by calling
+<code>CL.releaseAll</code>. Additionally, if the <code>DEBUG</code> flag is set, an
+error message is displayed on the console before throwing the
+exception upwards in the call chain.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.addCleanupWrappers = <span class="keyword">function</span>(theObject, className) {
+    <span class="keyword">var</span> methodNames = [];
+    <span class="keyword">for</span> (<span class="keyword">var</span> propertyName <span class="keyword">in</span> theObject) {
+      <span class="keyword">if</span> (<span class="keyword">typeof</span> theObject[propertyName] === <span class="string">'function'</span> &amp;&amp; propertyName[<span class="number">0</span>] == propertyName.toLowerCase()[<span class="number">0</span>]) {
+        methodNames.push(propertyName);
+      }
+    }
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; methodNames.length; i++) {
+      <span class="keyword">var</span> name = methodNames[i];
+      <span class="keyword">var</span> publicName = name;
+      <span class="keyword">if</span> (publicName.indexOf(<span class="string">'_'</span>) !== <span class="number">0</span>) {
+        <span class="keyword">var</span> privateName = <span class="string">'_'</span>+name;
+        theObject[privateName] = theObject[name];
+        theObject[publicName] = makeTryCatchWrapper(theObject, privateName, className);
+      }
+    }
+  };
+
+  <span class="function"><span class="keyword">function</span> <span class="title">makeTryCatchWrapper</span><span class="params">(theObject, functionName, className)</span> {</span>
+    <span class="keyword">var</span> newFunction = <span class="keyword">function</span>() {
+      <span class="keyword">try</span> {
+        <span class="keyword">return</span> theObject[functionName].apply(theObject, arguments);
+      } <span class="keyword">catch</span> (e) {
+        <span class="keyword">if</span> (self.DEBUG) {
+          console.log(<span class="string">"WebCLException trapped by CL.js:"</span>);
+          console.log(<span class="string">"  "</span>+className+<span class="string">"."</span>+functionName.slice(<span class="number">1</span>), theObject[functionName]);
+          console.log(<span class="string">"  "</span>, arguments);
+          console.log(<span class="string">"  "</span>, theObject);
+          console.log(<span class="string">"  "</span>, e);
+        }
+        CL.releaseAll();
+        <span class="keyword">throw</span> className + <span class="string">"."</span> + functionName.slice(<span class="number">1</span>) + <span class="string">": "</span> + e;
+      }
+    };
+    <span class="keyword">return</span> newFunction;
+  };
+
+};</pre></div></div>
+            
+        </li>
+        
+    </ul>
+  </div>
+</body>
+</html>
