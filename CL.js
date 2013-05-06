@@ -4,8 +4,15 @@
 // preserving the look and feel of WebCL and providing easy access to
 // the underlying raw API.
 //
-// Please visit http://webcl.nokiaresearch.com for demos, tutorials,
-// and more information on WebCL.
+// CL.js currently works with the Nokia WebCL implementation only.
+// Any contributions to help make it work on the Samsung
+// implementation would be most welcome!
+//
+// This documentation is generated from the [source
+// code](http://github.com/toaarnio/CL.js) of CL.js using
+// [Docco](jashkenas.github.io/docco/).  Please visit
+// http://webcl.nokiaresearch.com for demos, tutorials, and more
+// information on WebCL.
 //
 // ## Example ##
 //
