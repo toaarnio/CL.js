@@ -520,7 +520,6 @@ CL.CommandQueue = function(parameters) {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = "CL.CommandQueue.peer: de-initialized";
-      self.context = null;
    }
   };
 
@@ -616,13 +615,6 @@ CL.Program = function(parameters) {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = "CL.Program.peer: de-initialized";
-      self.kernel = null;
-      self.context = null;
-      self.uri = null;
-      self.source = null;
-      self.built = false;
-      self.compilerOpts = null;
-      self.compilerDefs = null;
       CL.Impl.clearArray(self.kernels);
     }
   };
@@ -672,10 +664,6 @@ CL.Kernel = function(parameters) {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = "CL.Kernel.peer: de-initialized";
-      self.name = "deinitialized";
-      self.program = null;
-      self.context = null;
-      self.device = null;
     }
   };
 
@@ -697,10 +685,6 @@ CL.Buffer = function(parameters) {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = "CL.Buffer.peer: de-initialized";
-      self.name = "deinitialized";
-      self.context = null;
-      self.flags = -1;
-      self.size = -1;
     }
   };
 
@@ -723,13 +707,6 @@ CL.Image = function(parameters) {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = "CL.Image.peer: de-initialized";
-      self.name = "deinitialized";
-      self.context = null;
-      self.flags = -1;
-      self.format = -1;
-      self.width = -1;
-      self.height = -1;
-      self.size = -1;
     }
   };
 
