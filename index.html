@@ -678,7 +678,6 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = <span class="string">"CL.CommandQueue.peer: de-initialized"</span>;
-      self.context = <span class="literal">null</span>;
    }
   };
 
@@ -785,13 +784,6 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = <span class="string">"CL.Program.peer: de-initialized"</span>;
-      self.kernel = <span class="literal">null</span>;
-      self.context = <span class="literal">null</span>;
-      self.uri = <span class="literal">null</span>;
-      self.source = <span class="literal">null</span>;
-      self.built = <span class="literal">false</span>;
-      self.compilerOpts = <span class="literal">null</span>;
-      self.compilerDefs = <span class="literal">null</span>;
       CL.Impl.clearArray(self.kernels);
     }
   };
@@ -852,10 +844,6 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = <span class="string">"CL.Kernel.peer: de-initialized"</span>;
-      self.name = <span class="string">"deinitialized"</span>;
-      self.program = <span class="literal">null</span>;
-      self.context = <span class="literal">null</span>;
-      self.device = <span class="literal">null</span>;
     }
   };
 
@@ -888,10 +876,6 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = <span class="string">"CL.Buffer.peer: de-initialized"</span>;
-      self.name = <span class="string">"deinitialized"</span>;
-      self.context = <span class="literal">null</span>;
-      self.flags = -<span class="number">1</span>;
-      self.size = -<span class="number">1</span>;
     }
   };
 
@@ -925,13 +909,6 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
       self.peer = <span class="string">"CL.Image.peer: de-initialized"</span>;
-      self.name = <span class="string">"deinitialized"</span>;
-      self.context = <span class="literal">null</span>;
-      self.flags = -<span class="number">1</span>;
-      self.format = -<span class="number">1</span>;
-      self.width = -<span class="number">1</span>;
-      self.height = -<span class="number">1</span>;
-      self.size = -<span class="number">1</span>;
     }
   };
 
