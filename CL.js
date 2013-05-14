@@ -84,8 +84,9 @@ var CL = CL || { REVISION: '1' };
 // not yet create any native WebCL resources. The following setup
 // parameters can be provided:
 //
-//     CL.setup({ debug: true,      // default: false
-//                cleanup: false,   // default: true
+//     CL.setup({ debug: true,        // default: false
+//                cleanup: false,     // default: true
+//                profile: false,     // default: true
 //              });
 //
 // With the `debug` flag enabled, any exceptions are reported on the
@@ -98,7 +99,15 @@ var CL = CL || { REVISION: '1' };
 // when the user leaves the page, or when an exception occurs. This is
 // strongly recommended to avoid memory leaks, so the cleanup flag is
 // enabled by default.
-//               
+//
+// The `profile` flag specifies whether WebCL command queues will be
+// created with profiling enabled or disabled.  This does not perform
+// any profiling automatically, but merely enables the application to
+// do some profiling at its own discretion.  Profiling is enabled by
+// default, based on my assumption that it will not cause measurable
+// performance degradation (do let me know if this assumption is not
+// valid).
+//
 CL.setup = function(parameters) {
 
   // ### CL.platforms ###
@@ -238,6 +247,7 @@ CL.setup = function(parameters) {
     CL.Impl = new CL.Implementation();
     CL.Impl.DEBUG = parameters.debug || false;
     CL.Impl.CLEANUP = !(parameters.cleanup === false);
+    CL.Impl.PROFILE = !(parameters.profile === false);
     CL.Impl.addCleanupWrappers(self, "CL");
     self.setup = temp;
     if (window.WebCL) {
@@ -396,7 +406,8 @@ CL.Context = function(parameters) {
     parameters = parameters || {};
     var name = parameters.name || self.queues.length.toString();
     var queue = new CL.CommandQueue();
-    queue.peer = self.peer.createCommandQueue(self.device.peer, null);
+    var props = CL.Impl.PROFILE===true ? [CL.QUEUE_PROFILING_ENABLE] : null;
+    queue.peer = self.peer.createCommandQueue(self.device.peer, props);
     queue.context = self;
     queue.name = name;
     self.queues.push(queue);
@@ -506,17 +517,30 @@ CL.CommandQueue = function(parameters) {
   this.context = null;
 
   this.enqueueKernel = function(kernel, globalws) {
-    self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+    var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+    return event;
   };
 
   this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
     var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-    self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
+    var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
+    return event;
   };
 
   this.enqueueReadBuffer = function(srcBuffer, dstArray) {
     var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-    self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
+    var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
+    return event;
+  };
+
+  this.enqueueBarrier = function(eventWaitList) {
+    if (eventWaitList && eventWaitList.length > 0) {
+      self.peer.enqueueWaitForEvents(eventWaitList);
+    } else {
+      self.peer.enqueueBarrier();
+    }
+    var event = self.peer.enqueueMarker();
+    return event;
   };
 
   this.finish = function() {
@@ -736,6 +760,12 @@ CL.Implementation = function() {
   // resources when leaving the page or when an exception occurs.
   //
   this.CLEANUP = true;
+
+  // The `PROFILE` flag enables/disables profiling support on WebCL
+  // command queues, but does not automatically do any profiling if
+  // enabled.
+  //
+  this.PROFILE = true;
 
   // #### clearArray ####
   //
