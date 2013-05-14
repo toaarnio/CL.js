@@ -516,8 +516,9 @@ CL.CommandQueue = function(parameters) {
   this.peer = "CL.CommandQueue.peer: not yet initialized";
   this.context = null;
 
-  this.enqueueKernel = function(kernel, globalws) {
-    var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+  this.enqueueKernel = function(kernel, globalws, localws) {
+    var localws = localws || [];
+    var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
     return event;
   };
 
