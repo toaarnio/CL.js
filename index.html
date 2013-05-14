@@ -120,8 +120,9 @@ multiple times from different JavaScript source files.</p>
 Devices and Platforms that are available in this system. This does
 not yet create any native WebCL resources. The following setup
 parameters can be provided:</p>
-<pre><code>CL.setup({ debug: true,      // default: false
-           cleanup: false,   // default: true
+<pre><code>CL.setup({ debug: true,        // default: false
+           cleanup: false,     // default: true
+           profile: false,     // default: true
          });</code></pre>
 <p>With the <code>debug</code> flag enabled, any exceptions are reported on the
 console together with helpful information about the function and
@@ -132,6 +133,13 @@ CL.js over the course of the application are automatically released
 when the user leaves the page, or when an exception occurs. This is
 strongly recommended to avoid memory leaks, so the cleanup flag is
 enabled by default.</p>
+<p>The <code>profile</code> flag specifies whether WebCL command queues will be
+created with profiling enabled or disabled.  This does not perform
+any profiling automatically, but merely enables the application to
+do some profiling at its own discretion.  Profiling is enabled by
+default, based on my assumption that it will not cause measurable
+performance degradation (do let me know if this assumption is not
+valid).</p>
 
             </div>
             
@@ -351,6 +359,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     CL.Impl = <span class="keyword">new</span> CL.Implementation();
     CL.Impl.DEBUG = parameters.debug || <span class="literal">false</span>;
     CL.Impl.CLEANUP = !(parameters.cleanup === <span class="literal">false</span>);
+    CL.Impl.PROFILE = !(parameters.profile === <span class="literal">false</span>);
     CL.Impl.addCleanupWrappers(self, <span class="string">"CL"</span>);
     self.setup = temp;
     <span class="keyword">if</span> (window.WebCL) {
@@ -542,7 +551,8 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     parameters = parameters || {};
     <span class="keyword">var</span> name = parameters.name || self.queues.length.toString();
     <span class="keyword">var</span> queue = <span class="keyword">new</span> CL.CommandQueue();
-    queue.peer = self.peer.createCommandQueue(self.device.peer, <span class="literal">null</span>);
+    <span class="keyword">var</span> props = CL.Impl.PROFILE===<span class="literal">true</span> ? [CL.QUEUE_PROFILING_ENABLE] : <span class="literal">null</span>;
+    queue.peer = self.peer.createCommandQueue(self.device.peer, props);
     queue.context = self;
     queue.name = name;
     self.queues.push(queue);
@@ -663,17 +673,30 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.context = <span class="literal">null</span>;
 
   <span class="keyword">this</span>.enqueueKernel = <span class="keyword">function</span>(kernel, globalws) {
-    self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+    <span class="keyword">var</span> event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+    <span class="keyword">return</span> event;
   };
 
   <span class="keyword">this</span>.enqueueWriteBuffer = <span class="keyword">function</span>(dstBuffer, srcArray) {
     <span class="keyword">var</span> numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-    self.peer.enqueueWriteBuffer(dstBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, srcArray, []);
+    <span class="keyword">var</span> event = self.peer.enqueueWriteBuffer(dstBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, srcArray, []);
+    <span class="keyword">return</span> event;
   };
 
   <span class="keyword">this</span>.enqueueReadBuffer = <span class="keyword">function</span>(srcBuffer, dstArray) {
     <span class="keyword">var</span> numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-    self.peer.enqueueReadBuffer(srcBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, dstArray, []);
+    <span class="keyword">var</span> event = self.peer.enqueueReadBuffer(srcBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, dstArray, []);
+    <span class="keyword">return</span> event;
+  };
+
+  <span class="keyword">this</span>.enqueueBarrier = <span class="keyword">function</span>(eventWaitList) {
+    <span class="keyword">if</span> (eventWaitList &amp;&amp; eventWaitList.length &gt; <span class="number">0</span>) {
+      self.peer.enqueueWaitForEvents(eventWaitList);
+    } <span class="keyword">else</span> {
+      self.peer.enqueueBarrier();
+    }
+    <span class="keyword">var</span> event = self.peer.enqueueMarker();
+    <span class="keyword">return</span> event;
   };
 
   <span class="keyword">this</span>.finish = <span class="keyword">function</span>() {
@@ -976,8 +999,25 @@ resources when leaving the page or when an exception occurs.</p>
         <li id="section-23">
             <div class="annotation">
               
-              <div class="pilwrap for-h4">
+              <div class="pilwrap ">
                 <a class="pilcrow" href="#section-23">&#182;</a>
+              </div>
+              <p>The <code>PROFILE</code> flag enables/disables profiling support on WebCL
+command queues, but does not automatically do any profiling if
+enabled.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.PROFILE = <span class="literal">true</span>;</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-24">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h4">
+                <a class="pilcrow" href="#section-24">&#182;</a>
               </div>
               <h4>clearArray</h4>
 <p>Recurses through all CL objects in <code>theArray</code> and releases their
@@ -999,11 +1039,11 @@ contains anything else than CL.js objects.</p>
         </li>
         
         
-        <li id="section-24">
+        <li id="section-25">
             <div class="annotation">
               
               <div class="pilwrap for-h4">
-                <a class="pilcrow" href="#section-24">&#182;</a>
+                <a class="pilcrow" href="#section-25">&#182;</a>
               </div>
               <h4>addCleanupWrappers</h4>
 <p>Wraps a try-catch block around each function in <code>theObject</code>.
