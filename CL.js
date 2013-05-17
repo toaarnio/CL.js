@@ -373,12 +373,7 @@ CL.Device = function(parameters) {
   this.contexts = [];
 
   this.getContext = function(name) {
-    for (var i=0; i < self.contexts.length; i++) {
-      if ((self.contexts[i].name.indexOf(name) === 0) && (name.length == self.contexts[i].name.length)) {
-        return self.contexts[i];
-      }
-    }
-    return null;
+    return CL.Impl.getFromArray(self.contexts, name);
   };
 
   this.releaseAll = function() {
@@ -425,6 +420,7 @@ CL.Context = function(parameters) {
     buffer.size = byteLength;
     buffer.context = self;
     buffer.name = name;
+    CL.Impl.removeFromArray(self.buffers, name);
     self.buffers.push(buffer);
     return buffer;
   };
@@ -444,6 +440,7 @@ CL.Context = function(parameters) {
     image.height = height;
     image.context = self;
     image.name = name;
+    CL.Impl.removeFromArray(self.images, name);
     self.images.push(image);
     return image;
   };
@@ -467,12 +464,7 @@ CL.Context = function(parameters) {
   };
 
   this.getBuffer = function(name) {
-    for (var b=0; b < self.buffers.length; b++) {
-      if ((self.buffers[b].name.indexOf(name) === 0) && (name.length === self.buffers[b].name.length)) {
-        return self.buffers[b];
-      }
-    }
-    return null;
+    return CL.Impl.getFromArray(self.buffers, name);
   };
 
   this.getKernel = function(name) {
@@ -486,12 +478,7 @@ CL.Context = function(parameters) {
   };
 
   this.getQueue = function(name) {
-    for (var q=0; q < self.queues.length; q++) {
-      if ((self.queues[q].name.indexOf(name) === 0) && (name.length === self.queues[q].name.length)) {
-        return self.queues[q];
-      }
-    }
-    return null;
+    return CL.Impl.getFromArray(self.queues, name);
   };
 
   this.releaseAll = function() {
@@ -600,13 +587,7 @@ CL.Program = function(parameters) {
   };
 
   this.getKernel = function(name) {
-    for (var k=0; k < self.kernels.length; k++) {
-      if ((self.kernels[k].name.indexOf(name) === 0) && (name.length == self.kernels[k].name.length)) {
-        return self.kernels[k];
-      }
-    }
-    console.log("CL.js: Warning: kernel "+name+" not found.");
-    return null;
+    return CL.Impl.getFromArray(self.kernels, name);
   };
 
   var self = this;
@@ -770,7 +751,7 @@ CL.Implementation = function() {
 
   // #### clearArray ####
   //
-  // Recurses through all CL objects in `theArray` and releases their
+  // Loops through all CL objects in `theArray` and releases their
   // native resources.  Will fail if `theArray` is not an Array or
   // contains anything else than CL.js objects.
   //
@@ -781,7 +762,37 @@ CL.Implementation = function() {
     }
     theArray.length = 0;
   };
-  
+
+  // #### removeFromArray ####
+  //
+  // Removes the object by the given `name` from `theArray`, and
+  // releases the native CL resources of that object.
+  //
+  this.removeFromArray = function(theArray, name) {
+    for (var i=0; i < theArray.length; i++) {
+      var theObject = theArray[i];
+      if (theObject.name === name) {
+        theObject.releaseAll();
+        theArray.splice(i, 1);
+      }
+    }
+  };
+
+  // #### getFromArray ####
+  //
+  // Retrieves the object by the given `name` from `theArray`.
+  // Returns `null` if no object by that name is found.
+  //
+  this.getFromArray = function(theArray, name) {
+    for (var i=0; i < theArray.length; i++) {
+      if (theArray[i].name === name) {
+        return theArray[i];
+      }
+    }
+    console.log("CL.js: Warning: object '"+name+"' not found.");
+    return null;
+  };
+
   var self = this;
 
   // #### addCleanupWrappers ####
