@@ -582,7 +582,9 @@ CL.Program = function(parameters) {
         throw e + info;
       }
     } else {
-      throw "Cannot build program: Kernel source code or WebCLContext missing.";
+      var msg = "Cannot build program: missing ";
+      msg += self.context? "kernel source code" : "CL.Context";
+      throw msg;
     }
   };
 
@@ -789,7 +791,7 @@ CL.Implementation = function() {
         return theArray[i];
       }
     }
-    console.log("CL.js: Warning: object '"+name+"' not found.");
+    //console.log("CL.js: Warning: object '"+name+"' not found.");
     return null;
   };
 
