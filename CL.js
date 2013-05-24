@@ -194,8 +194,8 @@ CL.setup = function(parameters) {
   // avoid obsolete copies of the kernel getting served from some
   // proxy or cache.
   //
-  CL.loadSource = function(uri) {
-    return xhrLoad(uri);
+  CL.loadSource = function(uri, callback) {
+    return xhrLoad(uri, callback);
   };
 
   // ### CL.releaseAll() ###
@@ -318,20 +318,24 @@ CL.setup = function(parameters) {
     }
   };
 
-  function xhrLoad(uri) {
+  function xhrLoad(uri, callback) {
+    var useAsync = (typeof callback === 'function');
     var xhr = new XMLHttpRequest();
-    var response = xhrTry("POST");
-    return response || xhrTry("GET");
+    if (useAsync) {
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+          callback(xhr.responseText);
+        }
+      };
+    }
 
-    function xhrTry(method) {
-      try {
-        xhr.open(method, uri, false);
-        xhr.send(null);
-        return (xhr.status === 200) ? xhr.responseText : null;
-      } catch (e) {
-        return null;
-      }
-    };
+    try {
+      xhr.open("GET", uri + "?id="+ Math.random(), useAsync);
+      xhr.send(null);
+      return useAsync || xhr.responseText;
+    } catch (e) {
+      return null;
+    }
   };
 
   function expect(msg, booleanResult) {
