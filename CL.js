@@ -244,7 +244,7 @@ CL.setup = function(parameters) {
     parameters = parameters || {};
     var temp = self.setup;
     delete self.setup;
-    CL.Impl = new CL.Implementation();
+    CL.Impl = new Implementation();
     CL.Impl.DEBUG = parameters.debug || false;
     CL.Impl.CLEANUP = !(parameters.cleanup === false);
     CL.Impl.PROFILE = !(parameters.profile === false);
@@ -509,17 +509,20 @@ CL.CommandQueue = function(parameters) {
 
   this.enqueueKernel = function(kernel, globalws, localws) {
     var localws = localws || [];
+    var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
     var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
     return event;
   };
 
   this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
+    var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
     var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
     var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
     return event;
   };
 
   this.enqueueReadBuffer = function(srcBuffer, dstArray) {
+    var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
     var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
     var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
     return event;
@@ -596,6 +599,8 @@ CL.Program = function(parameters) {
     return CL.Impl.getFromArray(self.kernels, name);
   };
 
+  // ### Implementation ###
+
   var self = this;
   init(parameters);
   CL.Impl.addCleanupWrappers(self, "CL.Program");
@@ -623,7 +628,7 @@ CL.Program = function(parameters) {
       clKernels[k].device = device;
       clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
       clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
-      clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+      clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
       clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
       clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
     }
@@ -648,7 +653,7 @@ CL.Kernel = function(parameters) {
   this.peer = "CL.Kernel.peer: not yet initialized";
   this.name = "uninitialized";
   this.numArgs = -1;
-  this.workGroupSize = -1;
+  this.maxWorkGroupSize = -1;
   this.localMemSize = -1;
   this.privateMemSize = -1;
   this.program = null;
@@ -677,6 +682,14 @@ CL.Kernel = function(parameters) {
     for (var i=0; i < arguments.length; i++) {
       self.setArg(i, arguments[i]);
     }
+  };
+
+  this.getInfo = function(paramName) {
+    return this.peer.getKernelInfo(paramName);
+  };
+
+  this.getWorkGroupInfo = function(device, paramName) {
+    return this.peer.getKernelWorkGroupInfo(device.peer, paramName);
   };
 
   this.releaseAll = function() {
@@ -737,7 +750,7 @@ CL.Image = function(parameters) {
 // Internal helper and wrapper functions that are not supposed to be
 // called from outside CL.js.
 // 
-CL.Implementation = function() {
+function Implementation() {
 
   // The `DEBUG` flag enables/disables debug messages on the
   // console at runtime.
