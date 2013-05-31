@@ -192,7 +192,8 @@ CL.setup = function(parameters) {
   // Loads a kernel source code file from the given `uri` via http
   // POST or, failing that, http GET. POST is preferred in order to
   // avoid obsolete copies of the kernel getting served from some
-  // proxy or cache.
+  // proxy or cache. Uses async XHR if a `callback` function is
+  // given.
   //
   CL.loadSource = function(uri, callback) {
     return xhrLoad(uri, callback);
@@ -511,6 +512,7 @@ CL.CommandQueue = function(parameters) {
     var localws = localws || [];
     var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
     var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
+    events.push(event);
     return event;
   };
 
@@ -518,6 +520,7 @@ CL.CommandQueue = function(parameters) {
     var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
     var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
     var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
+    events.push(event);
     return event;
   };
 
@@ -525,6 +528,7 @@ CL.CommandQueue = function(parameters) {
     var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
     var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
     var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
+    events.push(event);
     return event;
   };
 
@@ -535,6 +539,7 @@ CL.CommandQueue = function(parameters) {
       self.peer.enqueueBarrier();
     }
     var event = self.peer.enqueueMarker();
+    events.push(event);
     return event;
   };
 
@@ -545,11 +550,17 @@ CL.CommandQueue = function(parameters) {
   this.releaseAll = function() {
     if (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
+      for (var i=0; i < events.length; i++) {
+        events[i].releaseCLResources();
+        delete events[i];
+      }
+      events.length = 0;
       self.peer = "CL.CommandQueue.peer: de-initialized";
    }
   };
 
   var self = this;
+  var events = [];
   CL.Impl.addCleanupWrappers(self, "CL.CommandQueue");
 };
 
