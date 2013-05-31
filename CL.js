@@ -33,10 +33,15 @@
 // 
 //     var src = CL.loadSource('kernels/random.cl');
 //     for (var d=0; d < CL.devices.length; d++) {
-//       var ctx = CL.createContext({ device: CL.devices[d], name: 'device'+d });
-//       var buffer1M = ctx.createBuffer({ size: 1024*1024, name: 'results' });
-//       var kernel = ctx.buildKernel({ source: src });
-//       kernel.setArgs(buffer1M);
+//       var ctx = CL.createContext({ 
+//         device: CL.devices[d],
+//         name: 'device'+d 
+//       });
+//       ctx.createBuffer({
+//         size: 1024*1024,
+//         name: 'results'
+//       });
+//       ctx.buildKernel({ source: src });
 //       ctx.createCommandQueue({ name: 'theQueue' });
 //     }
 //
@@ -45,15 +50,16 @@
 // we need later on. The Kernel object that we created for each
 // Context is assigned the same name as the kernel function in
 // `random.cl`.  For the purposes of this example, let's assume that
-// the kernel function is called `generateRandomNumbers`. Now, let's
-// proceed to run it on each Device in turn, reading back the results
-// into an ArrayBuffer:
+// the kernel function is called `rnd`. Now, let's proceed to run it
+// on each Device in turn, reading back the results into a 1-megabyte
+// ArrayBuffer:
 //
 //     var randomNumbers = new Uint8Array(1024*1024);
 //     for (var d=0; d < CL.devices.length; d++) {
 //        var ctx = CL.getContext('device'+d);
 //        var queue = ctx.getQueue('theQueue');
-//        queue.enqueueKernel('generateRandomNumbers', [randomNumbers.length]);
+//        kernel.setArgs('results');
+//        queue.enqueueKernel('rnd', [randomNumbers.length]);
 //        queue.enqueueReadBuffer('results', randomNumbers);
 //        queue.finish();
 //        /* Do something with the randomNumbers array */
