@@ -53,10 +53,15 @@ arguments that triggered the exception.  Next, let&#39;s create the CL
 resources that we&#39;re going to need in this example:</p>
 <pre><code>var src = CL.loadSource(&#39;kernels/random.cl&#39;);
 for (var d=0; d &lt; CL.devices.length; d++) {
-  var ctx = CL.createContext({ device: CL.devices[d], name: &#39;device&#39;+d });
-  var buffer1M = ctx.createBuffer({ size: 1024*1024, name: &#39;results&#39; });
-  var kernel = ctx.buildKernel({ source: src });
-  kernel.setArgs(buffer1M);
+  var ctx = CL.createContext({ 
+    device: CL.devices[d],
+    name: &#39;device&#39;+d 
+  });
+  ctx.createBuffer({
+    size: 1024*1024,
+    name: &#39;results&#39;
+  });
+  ctx.buildKernel({ source: src });
   ctx.createCommandQueue({ name: &#39;theQueue&#39; });
 }</code></pre>
 <p>Note that we assigned a plain-text <code>name</code> for each of our contexts,
@@ -64,19 +69,18 @@ buffers and queues. This makes it easy to find the resources that
 we need later on. The Kernel object that we created for each
 Context is assigned the same name as the kernel function in
 <code>random.cl</code>.  For the purposes of this example, let&#39;s assume that
-the kernel function is called <code>generateRandomNumbers</code>. Now, let&#39;s
-proceed to run it on each Device in turn, reading back the results
-into an ArrayBuffer:</p>
+the kernel function is called <code>rnd</code>. Now, let&#39;s proceed to run it
+on each Device in turn, reading back the results into a 1-megabyte
+ArrayBuffer:</p>
 <pre><code>var randomNumbers = new Uint8Array(1024*1024);
 for (var d=0; d &lt; CL.devices.length; d++) {
    var ctx = CL.getContext(&#39;device&#39;+d);
    var queue = ctx.getQueue(&#39;theQueue&#39;);
-   var kernel = ctx.getKernel(&#39;generateRandomNumbers&#39;);
-   var buffer1M = ctx.getBuffer(&#39;results&#39;);
-   queue.enqueueKernel(kernel, [randomNumbers.length]);
-   queue.enqueueReadBuffer(buffer1M, randomNumbers);
+   ctx.getKernel(&#39;rnd&#39;).setArgs(&#39;results&#39;);
+   queue.enqueueKernel(&#39;rnd&#39;, [randomNumbers.length]);
+   queue.enqueueReadBuffer(&#39;results&#39;, randomNumbers);
    queue.finish();
-   /* Do something with randomNumbers */
+   /* Do something with the randomNumbers array */
 }</code></pre>
 
             </div>
@@ -272,12 +276,13 @@ no context by that name exists for any Device.  See
 <p>Loads a kernel source code file from the given <code>uri</code> via http
 POST or, failing that, http GET. POST is preferred in order to
 avoid obsolete copies of the kernel getting served from some
-proxy or cache.</p>
+proxy or cache. Uses async XHR if a <code>callback</code> function is
+given.</p>
 
             </div>
             
-            <div class="content"><div class='highlight'><pre>  CL.loadSource = <span class="keyword">function</span>(uri) {
-    <span class="keyword">return</span> xhrLoad(uri);
+            <div class="content"><div class='highlight'><pre>  CL.loadSource = <span class="keyword">function</span>(uri, callback) {
+    <span class="keyword">return</span> xhrLoad(uri, callback);
   };</pre></div></div>
             
         </li>
@@ -356,7 +361,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     parameters = parameters || {};
     <span class="keyword">var</span> temp = self.setup;
     <span class="keyword">delete</span> self.setup;
-    CL.Impl = <span class="keyword">new</span> CL.Implementation();
+    CL.Impl = <span class="keyword">new</span> Implementation();
     CL.Impl.DEBUG = parameters.debug || <span class="literal">false</span>;
     CL.Impl.CLEANUP = !(parameters.cleanup === <span class="literal">false</span>);
     CL.Impl.PROFILE = !(parameters.profile === <span class="literal">false</span>);
@@ -430,20 +435,24 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     }
   };
 
-  <span class="function"><span class="keyword">function</span> <span class="title">xhrLoad</span><span class="params">(uri)</span> {</span>
+  <span class="function"><span class="keyword">function</span> <span class="title">xhrLoad</span><span class="params">(uri, callback)</span> {</span>
+    <span class="keyword">var</span> useAsync = (<span class="keyword">typeof</span> callback === <span class="string">'function'</span>);
     <span class="keyword">var</span> xhr = <span class="keyword">new</span> XMLHttpRequest();
-    <span class="keyword">var</span> response = xhrTry(<span class="string">"POST"</span>);
-    <span class="keyword">return</span> response || xhrTry(<span class="string">"GET"</span>);
+    <span class="keyword">if</span> (useAsync) {
+      xhr.onreadystatechange = <span class="keyword">function</span>() {
+        <span class="keyword">if</span> (xhr.readyState === <span class="number">4</span> &amp;&amp; xhr.status === <span class="number">200</span>) {
+          callback(xhr.responseText);
+        }
+      };
+    }
 
-    <span class="function"><span class="keyword">function</span> <span class="title">xhrTry</span><span class="params">(method)</span> {</span>
-      <span class="keyword">try</span> {
-        xhr.open(method, uri, <span class="literal">false</span>);
-        xhr.send(<span class="literal">null</span>);
-        <span class="keyword">return</span> (xhr.status === <span class="number">200</span>) ? xhr.responseText : <span class="literal">null</span>;
-      } <span class="keyword">catch</span> (e) {
-        <span class="keyword">return</span> <span class="literal">null</span>;
-      }
-    };
+    <span class="keyword">try</span> {
+      xhr.open(<span class="string">"GET"</span>, uri + <span class="string">"?id="</span>+ Math.random(), useAsync);
+      xhr.send(<span class="literal">null</span>);
+      <span class="keyword">return</span> useAsync || xhr.responseText;
+    } <span class="keyword">catch</span> (e) {
+      <span class="keyword">return</span> <span class="literal">null</span>;
+    }
   };
 
   <span class="function"><span class="keyword">function</span> <span class="title">expect</span><span class="params">(msg, booleanResult)</span> {</span>
@@ -507,12 +516,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.contexts = [];
 
   <span class="keyword">this</span>.getContext = <span class="keyword">function</span>(name) {
-    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; self.contexts.length; i++) {
-      <span class="keyword">if</span> ((self.contexts[i].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length == self.contexts[i].name.length)) {
-        <span class="keyword">return</span> self.contexts[i];
-      }
-    }
-    <span class="keyword">return</span> <span class="literal">null</span>;
+    <span class="keyword">return</span> CL.Impl.getFromArray(self.contexts, name);
   };
 
   <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
@@ -570,6 +574,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     buffer.size = byteLength;
     buffer.context = self;
     buffer.name = name;
+    CL.Impl.removeFromArray(self.buffers, name);
     self.buffers.push(buffer);
     <span class="keyword">return</span> buffer;
   };
@@ -589,6 +594,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     image.height = height;
     image.context = self;
     image.name = name;
+    CL.Impl.removeFromArray(self.images, name);
     self.images.push(image);
     <span class="keyword">return</span> image;
   };
@@ -612,12 +618,11 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   };
 
   <span class="keyword">this</span>.getBuffer = <span class="keyword">function</span>(name) {
-    <span class="keyword">for</span> (<span class="keyword">var</span> b=<span class="number">0</span>; b &lt; self.buffers.length; b++) {
-      <span class="keyword">if</span> ((self.buffers[b].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length === self.buffers[b].name.length)) {
-        <span class="keyword">return</span> self.buffers[b];
-      }
-    }
-    <span class="keyword">return</span> <span class="literal">null</span>;
+    <span class="keyword">return</span> CL.Impl.getFromArray(self.buffers, name);
+  };
+
+  <span class="keyword">this</span>.getImage = <span class="keyword">function</span>(name) {
+    <span class="keyword">return</span> CL.Impl.getFromArray(self.images, name);
   };
 
   <span class="keyword">this</span>.getKernel = <span class="keyword">function</span>(name) {
@@ -631,12 +636,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   };
 
   <span class="keyword">this</span>.getQueue = <span class="keyword">function</span>(name) {
-    <span class="keyword">for</span> (<span class="keyword">var</span> q=<span class="number">0</span>; q &lt; self.queues.length; q++) {
-      <span class="keyword">if</span> ((self.queues[q].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length === self.queues[q].name.length)) {
-        <span class="keyword">return</span> self.queues[q];
-      }
-    }
-    <span class="keyword">return</span> <span class="literal">null</span>;
+    <span class="keyword">return</span> CL.Impl.getFromArray(self.queues, name);
   };
 
   <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
@@ -672,20 +672,27 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.peer = <span class="string">"CL.CommandQueue.peer: not yet initialized"</span>;
   <span class="keyword">this</span>.context = <span class="literal">null</span>;
 
-  <span class="keyword">this</span>.enqueueKernel = <span class="keyword">function</span>(kernel, globalws) {
-    <span class="keyword">var</span> event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, [], []);
+  <span class="keyword">this</span>.enqueueKernel = <span class="keyword">function</span>(kernel, globalws, localws) {
+    <span class="keyword">var</span> localws = localws || [];
+    <span class="keyword">var</span> kernel = (<span class="keyword">typeof</span> kernel === <span class="string">'string'</span>) ? self.context.getKernel(kernel) : kernel;
+    <span class="keyword">var</span> event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
+    events.push(event);
     <span class="keyword">return</span> event;
   };
 
   <span class="keyword">this</span>.enqueueWriteBuffer = <span class="keyword">function</span>(dstBuffer, srcArray) {
+    <span class="keyword">var</span> dstBuffer = (<span class="keyword">typeof</span> dstBuffer === <span class="string">'string'</span>) ? self.context.getBuffer(dstBuffer) : dstBuffer;
     <span class="keyword">var</span> numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
     <span class="keyword">var</span> event = self.peer.enqueueWriteBuffer(dstBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, srcArray, []);
+    events.push(event);
     <span class="keyword">return</span> event;
   };
 
   <span class="keyword">this</span>.enqueueReadBuffer = <span class="keyword">function</span>(srcBuffer, dstArray) {
+    <span class="keyword">var</span> srcBuffer = (<span class="keyword">typeof</span> srcBuffer === <span class="string">'string'</span>) ? self.context.getBuffer(srcBuffer) : srcBuffer;
     <span class="keyword">var</span> numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
     <span class="keyword">var</span> event = self.peer.enqueueReadBuffer(srcBuffer.peer, <span class="literal">false</span>, <span class="number">0</span>, numBytes, dstArray, []);
+    events.push(event);
     <span class="keyword">return</span> event;
   };
 
@@ -696,6 +703,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
       self.peer.enqueueBarrier();
     }
     <span class="keyword">var</span> event = self.peer.enqueueMarker();
+    events.push(event);
     <span class="keyword">return</span> event;
   };
 
@@ -706,11 +714,17 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
     <span class="keyword">if</span> (self.peer.releaseCLResources) {
       self.peer.releaseCLResources();
+      <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; events.length; i++) {
+        events[i].releaseCLResources();
+        <span class="keyword">delete</span> events[i];
+      }
+      events.length = <span class="number">0</span>;
       self.peer = <span class="string">"CL.CommandQueue.peer: de-initialized"</span>;
    }
   };
 
   <span class="keyword">var</span> self = <span class="keyword">this</span>;
+  <span class="keyword">var</span> events = [];
   CL.Impl.addCleanupWrappers(self, <span class="string">"CL.CommandQueue"</span>);
 };</pre></div></div>
             
@@ -761,21 +775,30 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
         <span class="keyword">throw</span> e + info;
       }
     } <span class="keyword">else</span> {
-      <span class="keyword">throw</span> <span class="string">"Cannot build program: Kernel source code or WebCLContext missing."</span>;
+      <span class="keyword">var</span> msg = <span class="string">"Cannot build program: missing "</span>;
+      msg += self.context? <span class="string">"kernel source code"</span> : <span class="string">"CL.Context"</span>;
+      <span class="keyword">throw</span> msg;
     }
   };
 
   <span class="keyword">this</span>.getKernel = <span class="keyword">function</span>(name) {
-    <span class="keyword">for</span> (<span class="keyword">var</span> k=<span class="number">0</span>; k &lt; self.kernels.length; k++) {
-      <span class="keyword">if</span> ((self.kernels[k].name.indexOf(name) === <span class="number">0</span>) &amp;&amp; (name.length == self.kernels[k].name.length)) {
-        <span class="keyword">return</span> self.kernels[k];
-      }
-    }
-    console.log(<span class="string">"CL.js: Warning: kernel "</span>+name+<span class="string">" not found."</span>);
-    <span class="keyword">return</span> <span class="literal">null</span>;
-  };
+    <span class="keyword">return</span> CL.Impl.getFromArray(self.kernels, name);
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-17">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h3">
+                <a class="pilcrow" href="#section-17">&#182;</a>
+              </div>
+              <h3>Implementation</h3>
 
-  <span class="keyword">var</span> self = <span class="keyword">this</span>;
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">var</span> self = <span class="keyword">this</span>;
   init(parameters);
   CL.Impl.addCleanupWrappers(self, <span class="string">"CL.Program"</span>);
 
@@ -802,7 +825,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
       clKernels[k].device = device;
       clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
       clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
-      clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+      clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
       clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
       clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
     }
@@ -823,11 +846,11 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
         </li>
         
         
-        <li id="section-17">
+        <li id="section-18">
             <div class="annotation">
               
               <div class="pilwrap for-h3">
-                <a class="pilcrow" href="#section-17">&#182;</a>
+                <a class="pilcrow" href="#section-18">&#182;</a>
               </div>
               <h3>CL.Kernel</h3>
 <p>Instantiated by <code>CL.Program.build()</code></p>
@@ -838,7 +861,7 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.peer = <span class="string">"CL.Kernel.peer: not yet initialized"</span>;
   <span class="keyword">this</span>.name = <span class="string">"uninitialized"</span>;
   <span class="keyword">this</span>.numArgs = -<span class="number">1</span>;
-  <span class="keyword">this</span>.workGroupSize = -<span class="number">1</span>;
+  <span class="keyword">this</span>.maxWorkGroupSize = -<span class="number">1</span>;
   <span class="keyword">this</span>.localMemSize = -<span class="number">1</span>;
   <span class="keyword">this</span>.privateMemSize = -<span class="number">1</span>;
   <span class="keyword">this</span>.program = <span class="literal">null</span>;
@@ -846,20 +869,30 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
   <span class="keyword">this</span>.device = <span class="literal">null</span>;
   
   <span class="keyword">this</span>.setArg = <span class="keyword">function</span>(index, value) {
-    <span class="keyword">if</span> (value <span class="keyword">instanceof</span> CL.Buffer || value <span class="keyword">instanceof</span> CL.Image) {
+    <span class="keyword">var</span> isArray = (value <span class="keyword">instanceof</span> Array);
+    <span class="keyword">var</span> isNumber = (<span class="keyword">typeof</span> value === <span class="string">'number'</span>);
+    <span class="keyword">var</span> isFloat = isNumber &amp;&amp; (Math.floor(value) !== value);
+    <span class="keyword">var</span> isInt = isNumber &amp;&amp; !isFloat;
+    <span class="keyword">var</span> isTypedArray = (value.buffer <span class="keyword">instanceof</span> ArrayBuffer)
+    <span class="keyword">var</span> isMemObject = (value <span class="keyword">instanceof</span> CL.Buffer || value <span class="keyword">instanceof</span> CL.Image);
+    <span class="keyword">var</span> isNamedObject = (<span class="keyword">typeof</span> value === <span class="string">'string'</span>);
+
+    <span class="keyword">if</span> (isNamedObject) {
+      <span class="keyword">var</span> memObject = self.context.getBuffer(value);
+      memObject = memObject || self.context.getImage(value);
+      <span class="keyword">this</span>.peer.setKernelArg(index, memObject.peer);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isMemObject) {
       <span class="keyword">this</span>.peer.setKernelArg(index, value.peer);
-    } <span class="keyword">else</span> <span class="keyword">if</span> (<span class="keyword">typeof</span> value === <span class="string">'number'</span>) {
-      <span class="keyword">if</span> (Math.floor(value) !== value) {
-        <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.FLOAT);
-      } <span class="keyword">else</span> {
-        <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.UINT);
-      }
-    } <span class="keyword">else</span> <span class="keyword">if</span> (value.buffer <span class="keyword">instanceof</span> ArrayBuffer) {
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isFloat) {
+      <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.FLOAT);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isInt) {
+      <span class="keyword">this</span>.peer.setKernelArg(index, value, WebCL.types.UINT);
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isTypedArray) {
       <span class="keyword">this</span>.peer.setKernelArg(index, value);
-    } <span class="keyword">else</span> <span class="keyword">if</span> (value <span class="keyword">instanceof</span> Array) {
-      <span class="keyword">throw</span> <span class="string">"CL.Kernel.setArg: JavaScript Array arguments not supported."</span>;
+    } <span class="keyword">else</span> <span class="keyword">if</span> (isArray) {
+      <span class="keyword">throw</span> <span class="string">"JavaScript Array arguments not supported."</span>;
     } <span class="keyword">else</span> {
-      console.log(<span class="string">"Unrecognized kernel argument type: "</span>, value);
+      <span class="keyword">throw</span> <span class="string">"Unrecognized kernel argument type: "</span> + value;
     }
   };
 
@@ -867,6 +900,14 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
     <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; arguments.length; i++) {
       self.setArg(i, arguments[i]);
     }
+  };
+
+  <span class="keyword">this</span>.getInfo = <span class="keyword">function</span>(paramName) {
+    <span class="keyword">return</span> <span class="keyword">this</span>.peer.getKernelInfo(paramName);
+  };
+
+  <span class="keyword">this</span>.getWorkGroupInfo = <span class="keyword">function</span>(device, paramName) {
+    <span class="keyword">return</span> <span class="keyword">this</span>.peer.getKernelWorkGroupInfo(device.peer, paramName);
   };
 
   <span class="keyword">this</span>.releaseAll = <span class="keyword">function</span>() {
@@ -883,11 +924,11 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
         </li>
         
         
-        <li id="section-18">
+        <li id="section-19">
             <div class="annotation">
               
               <div class="pilwrap for-h3">
-                <a class="pilcrow" href="#section-18">&#182;</a>
+                <a class="pilcrow" href="#section-19">&#182;</a>
               </div>
               <h3>CL.Buffer</h3>
 <p>Instantiated by <code>CL.Context.createBuffer()</code></p>
@@ -914,11 +955,11 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
         </li>
         
         
-        <li id="section-19">
+        <li id="section-20">
             <div class="annotation">
               
               <div class="pilwrap for-h3">
-                <a class="pilcrow" href="#section-19">&#182;</a>
+                <a class="pilcrow" href="#section-20">&#182;</a>
               </div>
               <h3>CL.Image</h3>
 <p>Instantiated by <code>CL.Context.createImage()</code></p>
@@ -947,11 +988,11 @@ will return the string <code>&quot;IMAGE_FORMAT_NOT_SUPPORTED&quot;</code>.</p>
         </li>
         
         
-        <li id="section-20">
+        <li id="section-21">
             <div class="annotation">
               
               <div class="pilwrap for-h2">
-                <a class="pilcrow" href="#section-20">&#182;</a>
+                <a class="pilcrow" href="#section-21">&#182;</a>
               </div>
               <h2>Internal Implementation</h2>
 <p>Internal helper and wrapper functions that are not supposed to be
@@ -959,16 +1000,16 @@ called from outside CL.js.</p>
 
             </div>
             
-            <div class="content"><div class='highlight'><pre>CL.Implementation = <span class="keyword">function</span>() {</pre></div></div>
+            <div class="content"><div class='highlight'><pre><span class="function"><span class="keyword">function</span> <span class="title">Implementation</span><span class="params">()</span> {</span></pre></div></div>
             
         </li>
         
         
-        <li id="section-21">
+        <li id="section-22">
             <div class="annotation">
               
               <div class="pilwrap ">
-                <a class="pilcrow" href="#section-21">&#182;</a>
+                <a class="pilcrow" href="#section-22">&#182;</a>
               </div>
               <p>The <code>DEBUG</code> flag enables/disables debug messages on the
 console at runtime.</p>
@@ -980,11 +1021,11 @@ console at runtime.</p>
         </li>
         
         
-        <li id="section-22">
+        <li id="section-23">
             <div class="annotation">
               
               <div class="pilwrap ">
-                <a class="pilcrow" href="#section-22">&#182;</a>
+                <a class="pilcrow" href="#section-23">&#182;</a>
               </div>
               <p>The <code>CLEANUP</code> flag enables/disables automatic release of WebCL
 resources when leaving the page or when an exception occurs.</p>
@@ -996,11 +1037,11 @@ resources when leaving the page or when an exception occurs.</p>
         </li>
         
         
-        <li id="section-23">
+        <li id="section-24">
             <div class="annotation">
               
               <div class="pilwrap ">
-                <a class="pilcrow" href="#section-23">&#182;</a>
+                <a class="pilcrow" href="#section-24">&#182;</a>
               </div>
               <p>The <code>PROFILE</code> flag enables/disables profiling support on WebCL
 command queues, but does not automatically do any profiling if
@@ -1013,14 +1054,14 @@ enabled.</p>
         </li>
         
         
-        <li id="section-24">
+        <li id="section-25">
             <div class="annotation">
               
               <div class="pilwrap for-h4">
-                <a class="pilcrow" href="#section-24">&#182;</a>
+                <a class="pilcrow" href="#section-25">&#182;</a>
               </div>
               <h4>clearArray</h4>
-<p>Recurses through all CL objects in <code>theArray</code> and releases their
+<p>Loops through all CL objects in <code>theArray</code> and releases their
 native resources.  Will fail if <code>theArray</code> is not an Array or
 contains anything else than CL.js objects.</p>
 
@@ -1032,18 +1073,81 @@ contains anything else than CL.js objects.</p>
       <span class="keyword">delete</span> theArray[i];
     }
     theArray.length = <span class="number">0</span>;
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-26">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h4">
+                <a class="pilcrow" href="#section-26">&#182;</a>
+              </div>
+              <h4>removeFromArray</h4>
+<p>Removes the object by the given <code>name</code> from <code>theArray</code>, and
+releases the native CL resources of that object.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.removeFromArray = <span class="keyword">function</span>(theArray, name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; theArray.length; i++) {
+      <span class="keyword">var</span> theObject = theArray[i];
+      <span class="keyword">if</span> (theObject.name === name) {
+        theObject.releaseAll();
+        theArray.splice(i, <span class="number">1</span>);
+      }
+    }
+  };</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-27">
+            <div class="annotation">
+              
+              <div class="pilwrap for-h4">
+                <a class="pilcrow" href="#section-27">&#182;</a>
+              </div>
+              <h4>getFromArray</h4>
+<p>Retrieves the object by the given <code>name</code> from <code>theArray</code>.
+Returns <code>null</code> if no object by that name is found.</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>  <span class="keyword">this</span>.getFromArray = <span class="keyword">function</span>(theArray, name) {
+    <span class="keyword">for</span> (<span class="keyword">var</span> i=<span class="number">0</span>; i &lt; theArray.length; i++) {
+      <span class="keyword">if</span> (theArray[i].name === name) {
+        <span class="keyword">return</span> theArray[i];
+      }
+    }</pre></div></div>
+            
+        </li>
+        
+        
+        <li id="section-28">
+            <div class="annotation">
+              
+              <div class="pilwrap ">
+                <a class="pilcrow" href="#section-28">&#182;</a>
+              </div>
+              <p>console.log(&quot;CL.js: Warning: object &#39;&quot;+name+&quot;&#39; not found.&quot;);</p>
+
+            </div>
+            
+            <div class="content"><div class='highlight'><pre>    <span class="keyword">return</span> <span class="literal">null</span>;
   };
-  
+
   <span class="keyword">var</span> self = <span class="keyword">this</span>;</pre></div></div>
             
         </li>
         
         
-        <li id="section-25">
+        <li id="section-29">
             <div class="annotation">
               
               <div class="pilwrap for-h4">
-                <a class="pilcrow" href="#section-25">&#182;</a>
+                <a class="pilcrow" href="#section-29">&#182;</a>
               </div>
               <h4>addCleanupWrappers</h4>
 <p>Wraps a try-catch block around each function in <code>theObject</code>.
