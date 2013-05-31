@@ -58,7 +58,7 @@
 //     for (var d=0; d < CL.devices.length; d++) {
 //        var ctx = CL.getContext('device'+d);
 //        var queue = ctx.getQueue('theQueue');
-//        kernel.setArgs('results');
+//        ctx.getKernel('rnd').setArgs('results');
 //        queue.enqueueKernel('rnd', [randomNumbers.length]);
 //        queue.enqueueReadBuffer('results', randomNumbers);
 //        queue.finish();
