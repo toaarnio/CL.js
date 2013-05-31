@@ -53,12 +53,10 @@
 //     for (var d=0; d < CL.devices.length; d++) {
 //        var ctx = CL.getContext('device'+d);
 //        var queue = ctx.getQueue('theQueue');
-//        var kernel = ctx.getKernel('generateRandomNumbers');
-//        var buffer1M = ctx.getBuffer('results');
-//        queue.enqueueKernel(kernel, [randomNumbers.length]);
-//        queue.enqueueReadBuffer(buffer1M, randomNumbers);
+//        queue.enqueueKernel('generateRandomNumbers', [randomNumbers.length]);
+//        queue.enqueueReadBuffer('results', randomNumbers);
 //        queue.finish();
-//        /* Do something with randomNumbers */
+//        /* Do something with the randomNumbers array */
 //     }
 //
 
@@ -472,6 +470,10 @@ CL.Context = function(parameters) {
     return CL.Impl.getFromArray(self.buffers, name);
   };
 
+  this.getImage = function(name) {
+    return CL.Impl.getFromArray(self.images, name);
+  };
+
   this.getKernel = function(name) {
     for (var p=0; p < self.programs.length; p++) {
       var result = self.programs[p].getKernel(name);
@@ -672,20 +674,30 @@ CL.Kernel = function(parameters) {
   this.device = null;
   
   this.setArg = function(index, value) {
-    if (value instanceof CL.Buffer || value instanceof CL.Image) {
+    var isArray = (value instanceof Array);
+    var isNumber = (typeof value === 'number');
+    var isFloat = isNumber && (Math.floor(value) !== value);
+    var isInt = isNumber && !isFloat;
+    var isTypedArray = (value.buffer instanceof ArrayBuffer)
+    var isMemObject = (value instanceof CL.Buffer || value instanceof CL.Image);
+    var isNamedObject = (typeof value === 'string');
+
+    if (isNamedObject) {
+      var memObject = self.context.getBuffer(value);
+      memObject = memObject || self.context.getImage(value);
+      this.peer.setKernelArg(index, memObject.peer);
+    } else if (isMemObject) {
       this.peer.setKernelArg(index, value.peer);
-    } else if (typeof value === 'number') {
-      if (Math.floor(value) !== value) {
-        this.peer.setKernelArg(index, value, WebCL.types.FLOAT);
-      } else {
-        this.peer.setKernelArg(index, value, WebCL.types.UINT);
-      }
-    } else if (value.buffer instanceof ArrayBuffer) {
+    } else if (isFloat) {
+      this.peer.setKernelArg(index, value, WebCL.types.FLOAT);
+    } else if (isInt) {
+      this.peer.setKernelArg(index, value, WebCL.types.UINT);
+    } else if (isTypedArray) {
       this.peer.setKernelArg(index, value);
-    } else if (value instanceof Array) {
-      throw "CL.Kernel.setArg: JavaScript Array arguments not supported.";
+    } else if (isArray) {
+      throw "JavaScript Array arguments not supported.";
     } else {
-      console.log("Unrecognized kernel argument type: ", value);
+      throw "Unrecognized kernel argument type: " + value;
     }
   };
 
