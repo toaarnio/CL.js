@@ -607,7 +607,7 @@ CL.Program = function(parameters) {
         self.kernel = self.kernels[0];
         self.built = true;
       } catch(e) {
-        if (self.peer) {
+        if (typeof self.peer === 'WebCLProgram') {
           var info = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
         } else {
           var info = "Failed to create a WebCLProgram object";
