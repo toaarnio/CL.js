@@ -595,9 +595,13 @@ CL.Program = function(parameters) {
     for (var d in parameters.defines) {
       self.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
     }
-    if (self.context && self.source) {
+    if (self.context && (self.source || self.ptx)) {
       try {
-        self.peer = self.context.peer.createProgramWithSource(self.source);
+        if (self.source) {
+          self.peer = self.context.peer.createProgramWithSource(self.source);
+        } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
+          self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
+        }
         self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
         self.kernels = kernelFactory(self);
         self.kernel = self.kernels[0];
@@ -631,6 +635,8 @@ CL.Program = function(parameters) {
       self.source = CL.loadSource(parameters.uri);
     } else if (parameters.source) {
       self.source = parameters.source;
+    } else if (parameters.ptx) {
+      self.ptx = parameters.ptx;
     }
   };
 
