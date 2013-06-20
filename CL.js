@@ -187,7 +187,6 @@ CL.setup = function(parameters) {
         return result;
       }
     }
-    console.log("CL.js: Warning: context "+name+" not found.");
     return null;
   };
 
@@ -607,7 +606,7 @@ CL.Program = function(parameters) {
         self.kernel = self.kernels[0];
         self.built = true;
       } catch(e) {
-        if (typeof self.peer === 'WebCLProgram') {
+        if (self.peer.getProgramBuildInfo) {
           var info = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
         } else {
           var info = "Failed to create a WebCLProgram object";
@@ -847,7 +846,6 @@ function Implementation() {
         return theArray[i];
       }
     }
-    //console.log("CL.js: Warning: object '"+name+"' not found.");
     return null;
   };
 
