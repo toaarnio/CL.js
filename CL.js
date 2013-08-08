@@ -217,10 +217,8 @@ CL.setup = function(parameters) {
   // cleanup: false });`
   //
   CL.releaseAll = function() {
-    if (CL.Impl.CLEANUP) {
-      for (var d=0; d < CL.devices.length; d++) {
-        CL.devices[d].releaseAll();
-      }
+    for (var d=0; d < CL.devices.length; d++) {
+      CL.devices[d].releaseAll();
     }
   };
 
@@ -602,9 +600,17 @@ CL.Program = function(parameters) {
           self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
         }
         self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
-        self.kernels = kernelFactory(self);
-        self.kernel = self.kernels[0];
-        self.built = true;
+        var buildStatus = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
+        if (buildStatus === CL.BUILD_SUCCESS) {
+          self.kernels = kernelFactory(self);
+          if (self.kernels.length > 0) {
+            self.kernel = self.kernels[0];
+            self.built = true;
+          }
+        }
+        if (!self.built) {
+          throw "Kernel compilation failed, although the compiler claims it succeeded.";
+        }
       } catch(e) {
         if (self.peer.getProgramBuildInfo) {
           var info = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
@@ -856,11 +862,11 @@ function Implementation() {
   // Wraps a try-catch block around each function in `theObject`.
   // Internal functions (prefixed by an underscore) are not wrapped.
   //
-  // If an exception occurs in a wrapped function at runtime, all CL
-  // resources created by CL.js are automatically released by calling
-  // `CL.releaseAll`. Additionally, if the `DEBUG` flag is set, an
-  // error message is displayed on the console before throwing the
-  // exception upwards in the call chain.
+  // If an exception occurs in a wrapped function at runtime and the
+  // `CLEANUP` flag is set, all CL resources created by CL.js are
+  // automatically released by calling `CL.releaseAll`.  Similarly, if
+  // the `DEBUG` flag is set, an error message is displayed on the
+  // console before throwing the exception upwards in the call chain.
   //
   this.addCleanupWrappers = function(theObject, className) {
     var methodNames = [];
@@ -892,7 +898,9 @@ function Implementation() {
           console.log("  ", theObject);
           console.log("  ", e);
         }
-        CL.releaseAll();
+        if (self.CLEANUP) {
+          CL.releaseAll();
+        }
         throw className + "." + functionName.slice(1) + ": " + e;
       }
     };
