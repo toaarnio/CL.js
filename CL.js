@@ -600,8 +600,7 @@ CL.Program = function(parameters) {
           self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
         }
         self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
-        var buildStatus = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
-        if (buildStatus === CL.BUILD_SUCCESS) {
+        if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
           self.kernels = kernelFactory(self);
           if (self.kernels.length > 0) {
             self.kernel = self.kernels[0];
@@ -613,7 +612,7 @@ CL.Program = function(parameters) {
         }
       } catch(e) {
         if (self.peer.getProgramBuildInfo) {
-          var info = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+          var info = this.getBuildLog();
         } else {
           var info = "Failed to create a WebCLProgram object";
         }
@@ -625,6 +624,16 @@ CL.Program = function(parameters) {
       msg += self.context? "kernel source code" : "CL.Context";
       throw msg;
     }
+  };
+
+  this.getBuildStatus = function() {
+    var status = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
+    return status;
+  };
+  
+  this.getBuildLog = function() {
+    var log = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+    return log;
   };
 
   this.getKernel = function(name) {
@@ -676,8 +685,6 @@ CL.Program = function(parameters) {
       CL.Impl.clearArray(self.kernels);
     }
   };
-
-  var self = this;
 };
 
 // ### CL.Kernel ###
