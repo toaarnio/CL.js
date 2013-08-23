@@ -171,6 +171,7 @@ CL.setup = function(parameters) {
       ctx.devices[d].contexts.push(ctx);
     }
     ctx.name = parameters.name;
+    ctx.createBuffer({ name: 'spare', size: 32 });
     return ctx;
   };
 
@@ -193,10 +194,9 @@ CL.setup = function(parameters) {
   // ### CL.loadSource() ###
   // 
   // Loads a kernel source code file from the given `uri` via http
-  // POST or, failing that, http GET. POST is preferred in order to
-  // avoid obsolete copies of the kernel getting served from some
-  // proxy or cache. Uses async XHR if a `callback` function is
-  // given.
+  // GET, with a random query string appended to the uri to avoid
+  // obsolete copies getting served from some proxy or cache. Uses
+  // async XHR if a `callback` function is given.
   //
   CL.loadSource = function(uri, callback) {
     return xhrLoad(uri, callback);
@@ -640,6 +640,14 @@ CL.Program = function(parameters) {
     return CL.Impl.getFromArray(self.kernels, name);
   };
 
+  this.releaseAll = function() {
+    if (self.peer.releaseCLResources) {
+      self.peer.releaseCLResources();
+      self.peer = "CL.Program.peer: de-initialized";
+      CL.Impl.clearArray(self.kernels);
+    }
+  };
+
   // ### Implementation ###
 
   var self = this;
@@ -674,15 +682,74 @@ CL.Program = function(parameters) {
       clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
       clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
       clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
+      //clKernels[k].argTypes = getKernelArgTypes(clKernels[k]);
     }
     return clKernels;
   };
 
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      self.peer = "CL.Program.peer: de-initialized";
-      CL.Impl.clearArray(self.kernels);
+  // Tries to infer the type of each kernel argument by trying to set
+  // them and catching exceptions.  Unfortunately, it's impossible to
+  // distinguish pointers from integers of the same size, so we're not
+  // currently using the inferred types for anything.
+  // 
+  function getKernelArgTypes(kernel) {
+    var argTypes = [];
+    for (var i=0; i < kernel.numArgs; i++) {
+      var type = null;
+      type = type || tryArgType("BUFFER");
+      type = type || tryArgType("LOCAL");
+      type = type || tryArgType("SHORT");
+      type = type || tryArgType("USHORT");
+      type = type || tryArgType("INT");
+      type = type || tryArgType("UINT");
+      type = type || tryArgType("LONG");
+      type = type || tryArgType("ULONG");
+      type = type || tryArgType("FLOAT");
+      argTypes[i] = type;
+    }
+    console.log("Inferred argument types for kernel '"+kernel.name+"': " + argTypes);
+    return argTypes;
+
+    function tryArgType(type) {
+      try {
+        switch (type) {
+        case "BUFFER":
+          var spareBuffer = self.context.getBuffer('spare');
+          kernel.peer.setKernelArg(i, spareBuffer.peer);
+          return type;
+        case "IMAGE":
+          console.log("image argument type detection not yet implemented.");
+          return null;
+        case "LOCAL":
+          kernel.peer.setKernelArgLocal(i, 512);
+          return type;
+        case "SHORT":
+          kernel.peer.setKernelArg(i, 0x1234, WebCL.types.SHORT);
+          return type;
+        case "USHORT":
+          kernel.peer.setKernelArg(i, 0x1234, WebCL.types.USHORT);
+          return type;
+        case "INT":
+          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.INT);
+          return type;
+        case "UINT":
+          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.UINT);
+          return type;
+        case "LONG":
+          kernel.peer.setKernelArg(i, 0x12345678deadbeef, WebCL.types.LONG);
+          return type;
+        case "ULONG":
+          kernel.peer.setKernelArg(i, 0x12345678deadbeef, WebCL.types.ULONG);
+          return type;
+        case "FLOAT":
+          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.FLOAT);
+          return type;
+        default:
+          return null;
+        }
+      } catch (e) {
+        return null;
+      }
     }
   };
 };
@@ -694,6 +761,7 @@ CL.Kernel = function(parameters) {
   this.peer = "CL.Kernel.peer: not yet initialized";
   this.name = "uninitialized";
   this.numArgs = -1;
+  this.argTypes = null;
   this.maxWorkGroupSize = -1;
   this.localMemSize = -1;
   this.privateMemSize = -1;
@@ -710,22 +778,38 @@ CL.Kernel = function(parameters) {
     var isMemObject = (value instanceof CL.Buffer || value instanceof CL.Image);
     var isNamedObject = (typeof value === 'string');
 
-    if (isNamedObject) {
-      var memObject = self.context.getBuffer(value);
+    if (isNamedObject || isMemObject) {
+      var memObject = isMemObject && value;
+      memObject = memObject || self.context.getBuffer(value);
       memObject = memObject || self.context.getImage(value);
-      this.peer.setKernelArg(index, memObject.peer);
-    } else if (isMemObject) {
-      this.peer.setKernelArg(index, value.peer);
-    } else if (isFloat) {
-      this.peer.setKernelArg(index, value, WebCL.types.FLOAT);
-    } else if (isInt) {
-      this.peer.setKernelArg(index, value, WebCL.types.UINT);
+      self.peer.setKernelArg(index, memObject.peer);
     } else if (isTypedArray) {
-      this.peer.setKernelArg(index, value);
+      self.peer.setKernelArg(index, value);
     } else if (isArray) {
-      throw "JavaScript Array arguments not supported.";
-    } else {
-      throw "Unrecognized kernel argument type: " + value;
+      throw "Invalid kernel argument type: JavaScript Array arguments not supported.";
+    } else if (isFloat) {
+      self.peer.setKernelArg(index, value, WebCL.types.FLOAT);
+    } else if (isInt) {
+      var type = undefined;
+      type = type || tryArgType(index, value, WebCL.types.INT);
+      type = type || tryArgType(index, value, WebCL.types.LONG);
+      type = type || tryArgType(index, value, WebCL.types.SHORT);
+      type = type || tryArgType(index, value, WebCL.types.FLOAT);
+      if (type === undefined) {
+        try {
+          self.peer.setKernelArgLocal(index, value);
+          type = "LOCAL";
+        } catch (e) {
+          throw "Unrecognized kernel argument type: " + value;
+        }
+      }
+    }
+
+    function tryArgType(index, value, type) {
+      try {
+        self.peer.setKernelArg(index, value, type);
+        return type;
+      } catch (e) {}
     }
   };
 
@@ -749,6 +833,8 @@ CL.Kernel = function(parameters) {
       self.peer = "CL.Kernel.peer: de-initialized";
     }
   };
+
+  // ### Implementation ###
 
   var self = this;
   CL.Impl.addCleanupWrappers(self, "CL.Kernel");
