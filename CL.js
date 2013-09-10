@@ -126,42 +126,27 @@ var CL = (function() {
 
   // ### CL.createContext() ###
   // 
-  // Creates a new Context `for` the given device or devices, and
-  // assigns the given `name` to the newly created context:
+  // Creates a new Context for the given `device` and assigns the
+  // given `name` to the newly created context:
   //
-  //     CL.createContext({ for: aDeviceOrArrayOfDevices,
+  //     CL.createContext({ device: aDevice
   //                        name: 'arbitraryName' });
   //
   // For example:
   //
-  //     CL.createContext({ for: CL.devices[0], name: 'foo' });
+  //     CL.createContext({ device: CL.devices[0], name: 'foo' });
   //
   API.createContext = function(parameters) {
     parameters = parameters || {};
-    parameters.for = parameters.for || this.devices[0];
-    expect("a Device or an array of Devices", 
-           parameters.for instanceof Device ||
-           parameters.for instanceof Array);
+    parameters.device = parameters.device || this.devices[0];
+    expect("a valid and available Device", parameters.device.isAvailable);
 
     var ctx = new Context();
-    if (parameters.for instanceof Device) {
-      ctx.device = parameters.for;
-      ctx.devices = [ parameters.for ];
-    } else if (parameters.for instanceof Array) {
-      ctx.device = parameters.for[0];
-      ctx.devices = parameters.for;
-    }
-
-    ctx.platform = ctx.device.platform;
-    var devicePeers = [];
-    for (var d=0; d < ctx.devices.length; d++) {
-      devicePeers[d] = ctx.devices[d].peer;
-    }
-    ctx.peer = WebCL.createContext([CL.CONTEXT_PLATFORM, ctx.platform.peer], devicePeers);
-    for (var d=0; d < ctx.devices.length; d++) {
-      ctx.devices[d].contexts.push(ctx);
-    }
     ctx.name = parameters.name;
+    ctx.device = parameters.device;
+    ctx.platform = ctx.device.platform;
+    ctx.peer = WebCL.createContext([CL.CONTEXT_PLATFORM, ctx.platform.peer], [ctx.device.peer]);
+    ctx.device.contexts.push(ctx);
     return ctx;
   };
 
@@ -264,14 +249,12 @@ var CL = (function() {
     }
 
     window.onbeforeunload = function() {
-      //alert("Cleaning up " + instances.length + " CL instances");
       for (var i=0; i < instances.length; i++) {
         instance[i].releaseAll();
         instance[i].delete();
       }
     };
 
-    console.log("# of CL instances marked for automatic cleanup: ", instances.length);
     return cloneAPI;
   };
 
@@ -902,10 +885,14 @@ var CL = (function() {
     // Internal functions (prefixed by an underscore) are not wrapped.
     //
     // If an exception occurs in a wrapped function at runtime and the
-    // `CLEANUP` flag is set, all CL resources created by CL.js are
-    // automatically released by calling `CL.releaseAll`.  Similarly, if
-    // the `DEBUG` flag is set, an error message is displayed on the
-    // console before throwing the exception upwards in the call chain.
+    // `CLEANUP` flag is set, all resources held by the host object of
+    // that function are automatically released. For example, if a
+    // call to `context.createBuffer` fails, all buffers and other
+    // resources held by `context` are released.
+    // 
+    // Similarly, if the `DEBUG` flag is set, an error message is
+    // displayed on the console before throwing the exception upwards
+    // in the call chain.
     //
     this.addCleanupWrappers = function(theObject, className) {
 
@@ -949,7 +936,7 @@ var CL = (function() {
           if (self.CLEANUP) {
             theObject.releaseAll();
           }
-          throw className + "." + privateFunc + ": " + e;
+          throw className + "." + publicFunc + ": " + e;
         }
       };
       return newFunction;
