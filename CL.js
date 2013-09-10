@@ -81,17 +81,67 @@
 
 var CL = (function() {
 
-  var API = {};
+  // ## GLOBAL VARIABLES AND METHODS
 
-  // ### CL.REVISION ###
+  // ### CL.REVISION
   //
   // The current revision number. The number is increased every time a
   // potentially backward compatibility breaking change is introduced
   // to the API.
   //
-  API.REVISION = 1;
+  CL.REVISION = 1;
 
-  // ### CL.INSTANCE ###
+  // ### CL.loadSource() ###
+  // 
+  // Loads a kernel source code file from the given `uri` via http
+  // GET, with a random query string appended to the uri to avoid
+  // obsolete copies getting served from some proxy or cache. Uses
+  // async XHR if a `callback` function is given.
+  //
+  CL.loadSource = function(uri, callback) {
+    return xhrLoad(uri, callback);
+  };
+
+  // ### CL.enumToString() ###
+  //
+  // Returns the human-readable string representation of the given
+  // WebCL enumerated value. For example, `CL.enumToString(-10)` will
+  // return the string `"IMAGE_FORMAT_NOT_SUPPORTED"`.
+  //
+  CL.enumToString = function(enumValue) {
+    for (var e in CL) {
+      if (CL[e] === enumValue) {
+        return e;
+      }
+    }
+  };
+
+  // ### CL.releaseAll() ###
+  //
+  // Invalidates all WebCL objects and releases the memory and other
+  // resources held up by their native OpenCL counterparts.  This is
+  // crucially important, because JavaScript garbage collectors will
+  // typically not release the resources in any reasonable time, not
+  // even when the user reloads or leaves the page.
+  //
+  // By default, `CL.releaseAll` is called automatically when leaving
+  // the page, i.e., when the `window.onbeforeunload` event fires, or
+  // when an exception occurs in CL.js. If absolutely necessary, you
+  // can disable this behavior for a specific CL instance when
+  // creating it: `new CL({ cleanup: false })`.
+  //
+  CL.releaseAll = function() {
+    for (var i=0; i < instances.length; i++) {
+      instance[i].releaseAll();
+      instance[i].delete();
+    }
+  };
+
+  // ## INSTANCE VARIABLES AND METHODS
+
+  var API = {};
+
+  // ### cl.INSTANCE ###
   //
   // The ID of the current CL instance, initialized by `new CL()`.
   // This can be used for debugging purposes to uniquely identify
@@ -99,13 +149,7 @@ var CL = (function() {
   //
   API.INSTANCE = 0;
 
-  // ### API.enums ###
-  //
-  // Contains all WebCL enums (without the "CL_" prefix).
-  //
-  //API.enums = {};
-
-  // ### CL.platforms ###
+  // ### cl.platforms ###
   //
   // Contains all WebCL Platforms that are available in this system,
   // as discovered by `CL.setup()`.  Each Platform typically contains
@@ -114,7 +158,7 @@ var CL = (function() {
   //
   API.platforms = [];
 
-  // ### CL.devices ###
+  // ### cl.devices ###
   //
   // Contains all WebCL Devices that are actually available in this
   // system, as discovered by `CL.setup()`.  Each Device belongs to
@@ -124,17 +168,18 @@ var CL = (function() {
   //
   API.devices = [];
 
-  // ### CL.createContext() ###
+  // ### cl.createContext() ###
   // 
   // Creates a new Context for the given `device` and assigns the
   // given `name` to the newly created context:
   //
-  //     CL.createContext({ device: aDevice
+  //     cl.createContext({ device: aDevice
   //                        name: 'arbitraryName' });
   //
   // For example:
   //
-  //     CL.createContext({ device: CL.devices[0], name: 'foo' });
+  //     var cl = new CL();
+  //     cl.createContext({ device: cl.devices[0], name: 'foo' });
   //
   API.createContext = function(parameters) {
     parameters = parameters || {};
@@ -166,48 +211,9 @@ var CL = (function() {
     return null;
   };
 
-  // ### CL.loadSource() ###
-  // 
-  // Loads a kernel source code file from the given `uri` via http
-  // GET, with a random query string appended to the uri to avoid
-  // obsolete copies getting served from some proxy or cache. Uses
-  // async XHR if a `callback` function is given.
-  //
-  API.loadSource = function(uri, callback) {
-    return xhrLoad(uri, callback);
-  };
-
-  // ### CL.releaseAll() ###
-  //
-  // Invalidates all WebCL objects and releases the memory and other
-  // resources held up by their native OpenCL counterparts.  This is
-  // crucially important, because JavaScript garbage collectors will
-  // typically not release the resources in any reasonable time, not
-  // even when the user reloads or leaves the page.
-  //
-  // By default, `CL.releaseAll` is called automatically when leaving
-  // the page, i.e., when the `window.onbeforeunload` event fires, or
-  // when an exception occurs in CL.js. If absolutely necessary, you
-  // can disable this behavior at the setup stage: `CL.setup({
-  // cleanup: false });`
-  //
   API.releaseAll = function() {
     for (var d=0; d < this.devices.length; d++) {
       this.devices[d].releaseAll();
-    }
-  };
-
-  // ### CL.enumToString() ###
-  //
-  // Returns the human-readable string representation of the given
-  // WebCL enumerated value. For example, `CL.enumToString(-10)`
-  // will return the string `"IMAGE_FORMAT_NOT_SUPPORTED"`.
-  //
-  API.enumToString = function(enumValue) {
-    for (var e in CL) {
-      if (CL[e] === enumValue) {
-        return e;
-      }
     }
   };
 
@@ -231,6 +237,9 @@ var CL = (function() {
 
     API.INSTANCE++;
     var cloneAPI = {};
+    for (var p in CL) {
+      cloneAPI[p] = CL[p];
+    }
     for (var p in API) {
       cloneAPI[p] = API[p];
     }
@@ -249,10 +258,7 @@ var CL = (function() {
     }
 
     window.onbeforeunload = function() {
-      for (var i=0; i < instances.length; i++) {
-        instance[i].releaseAll();
-        instance[i].delete();
-      }
+      CL.releaseAll();
     };
 
     return cloneAPI;
@@ -699,7 +705,7 @@ var CL = (function() {
       parameters = parameters || {};
       if (parameters.uri) {
         self.uri = parameters.uri;
-        self.source = API.loadSource(parameters.uri);
+        self.source = CL.loadSource(parameters.uri);
       } else if (parameters.source) {
         self.source = parameters.source;
       } else if (parameters.ptx) {
