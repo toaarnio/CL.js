@@ -20,21 +20,21 @@
 //
 //     <script type="text/javascript" src="/path/to/CL.js"></script>
 //
-// Now, let's initialize the global CL object and populate it with
-// information about the WebCL platforms and devices that are
-// available in this system:
+// Now, let's create a CL object and populate it with information
+// about the WebCL platforms and devices that are available in this
+// system:
 //
-//     CL.setup({ debug: true });
+//     var cl = new CL({ debug: true });
 //
 // With debug mode enabled, any exceptions will be reported on the
 // console together with helpful information about the function and
 // arguments that triggered the exception.  Next, let's create the CL
 // resources that we're going to need in this example:
 // 
-//     var src = CL.loadSource('kernels/random.cl');
-//     for (var d=0; d < CL.devices.length; d++) {
-//       var ctx = CL.createContext({ 
-//         device: CL.devices[d],
+//     var src = cl.loadSource('kernels/random.cl');
+//     for (var d=0; d < cl.devices.length; d++) {
+//       var ctx = cl.createContext({ 
+//         device: cl.devices[d],
 //         name: 'device'+d 
 //       });
 //       ctx.createBuffer({
@@ -55,8 +55,8 @@
 // ArrayBuffer:
 //
 //     var randomNumbers = new Uint8Array(1024*1024);
-//     for (var d=0; d < CL.devices.length; d++) {
-//        var ctx = CL.getContext('device'+d);
+//     for (var d=0; d < cl.devices.length; d++) {
+//        var ctx = cl.getContext('device'+d);
 //        var queue = ctx.getQueue('theQueue');
 //        ctx.getKernel('rnd').setArgs('results');
 //        queue.enqueueKernel('rnd', [randomNumbers.length]);
@@ -72,47 +72,38 @@
  */
 
 // ## The CL API ##
-
+//
 // The global singleton `CL` object contains all the properties and
 // functionality that are available. CL.js can be safely included
 // multiple times from different JavaScript source files.
 //
 "use strict"
 
-var CL = CL || { REVISION: '1' };
+var CL = (function() {
 
-// ### CL.setup() ###
-//
-// Initializes the global singleton `CL` object and populates it the
-// Devices and Platforms that are available in this system. This does
-// not yet create any native WebCL resources. The following setup
-// parameters can be provided:
-//
-//     CL.setup({ debug: true,        // default: false
-//                cleanup: false,     // default: true
-//                profile: false,     // default: true
-//              });
-//
-// With the `debug` flag enabled, any exceptions are reported on the
-// console together with helpful information about the function and
-// arguments that triggered the exception. The debug flag is disabled
-// by default.
-//
-// With the `cleanup` flag enabled, all WebCL resources allocated by
-// CL.js over the course of the application are automatically released
-// when the user leaves the page, or when an exception occurs. This is
-// strongly recommended to avoid memory leaks, so the cleanup flag is
-// enabled by default.
-//
-// The `profile` flag specifies whether WebCL command queues will be
-// created with profiling enabled or disabled.  This does not perform
-// any profiling automatically, but merely enables the application to
-// do some profiling at its own discretion.  Profiling is enabled by
-// default, based on my assumption that it will not cause measurable
-// performance degradation (do let me know if this assumption is not
-// valid).
-//
-CL.setup = function(parameters) {
+  var API = {};
+
+  // ### CL.REVISION ###
+  //
+  // The current revision number. The number is increased every time a
+  // potentially backward compatibility breaking change is introduced
+  // to the API.
+  //
+  API.REVISION = 1;
+
+  // ### CL.INSTANCE ###
+  //
+  // The ID of the current CL instance, initialized by `new CL()`.
+  // This can be used for debugging purposes to uniquely identify
+  // which of the potentially many CL instances is being used.
+  //
+  API.INSTANCE = 0;
+
+  // ### API.enums ###
+  //
+  // Contains all WebCL enums (without the "CL_" prefix).
+  //
+  //API.enums = {};
 
   // ### CL.platforms ###
   //
@@ -121,7 +112,7 @@ CL.setup = function(parameters) {
   // one or more Devices, but it can also happen that all devices on a
   // particular platform are powered down or otherwise not available.
   //
-  CL.platforms = [];
+  API.platforms = [];
 
   // ### CL.devices ###
   //
@@ -131,7 +122,7 @@ CL.setup = function(parameters) {
   // not available are not included. Applications should be prepared
   // for the possibility that there are no devices available at all.
   //
-  CL.devices = [];
+  API.devices = [];
 
   // ### CL.createContext() ###
   // 
@@ -145,15 +136,15 @@ CL.setup = function(parameters) {
   //
   //     CL.createContext({ for: CL.devices[0], name: 'foo' });
   //
-  CL.createContext = function(parameters) {
+  API.createContext = function(parameters) {
     parameters = parameters || {};
-    parameters.for = parameters.for || self.devices[0];
+    parameters.for = parameters.for || this.devices[0];
     expect("a Device or an array of Devices", 
-           parameters.for instanceof CL.Device ||
+           parameters.for instanceof Device ||
            parameters.for instanceof Array);
 
-    var ctx = new CL.Context();
-    if (parameters.for instanceof CL.Device) {
+    var ctx = new Context();
+    if (parameters.for instanceof Device) {
       ctx.device = parameters.for;
       ctx.devices = [ parameters.for ];
     } else if (parameters.for instanceof Array) {
@@ -171,19 +162,18 @@ CL.setup = function(parameters) {
       ctx.devices[d].contexts.push(ctx);
     }
     ctx.name = parameters.name;
-    ctx.createBuffer({ name: 'spare', size: 32 });
     return ctx;
   };
 
   // ### CL.getContext() ###
   // 
-  // Retrieves the Context by the given plain-text `name`, or null if
-  // no context by that name exists for any Device.  See
+  // Retrieves the Context by the given plain-text `name`, or null
+  // if no context by that name exists for any Device.  See
   // `CL.createContext` for how to assign a name to a context.
   //
-  CL.getContext = function(name) {
-    for (var d=0; d < self.devices.length; d++) {
-      var result = self.devices[d].getContext(name);
+  API.getContext = function(name) {
+    for (var d=0; d < this.devices.length; d++) {
+      var result = this.devices[d].getContext(name);
       if (result !== null) {
         return result;
       }
@@ -198,7 +188,7 @@ CL.setup = function(parameters) {
   // obsolete copies getting served from some proxy or cache. Uses
   // async XHR if a `callback` function is given.
   //
-  CL.loadSource = function(uri, callback) {
+  API.loadSource = function(uri, callback) {
     return xhrLoad(uri, callback);
   };
 
@@ -216,9 +206,9 @@ CL.setup = function(parameters) {
   // can disable this behavior at the setup stage: `CL.setup({
   // cleanup: false });`
   //
-  CL.releaseAll = function() {
-    for (var d=0; d < CL.devices.length; d++) {
-      CL.devices[d].releaseAll();
+  API.releaseAll = function() {
+    for (var d=0; d < this.devices.length; d++) {
+      this.devices[d].releaseAll();
     }
   };
 
@@ -228,7 +218,7 @@ CL.setup = function(parameters) {
   // WebCL enumerated value. For example, `CL.enumToString(-10)`
   // will return the string `"IMAGE_FORMAT_NOT_SUPPORTED"`.
   //
-  CL.enumToString = function(enumValue) {
+  API.enumToString = function(enumValue) {
     for (var e in CL) {
       if (CL[e] === enumValue) {
         return e;
@@ -236,86 +226,60 @@ CL.setup = function(parameters) {
     }
   };
 
-  // ### Implementation ###
+  ///////////////////////////////
+  // Private Implementation
 
-  var self = this;
-  init(parameters);
+  var IMP = null;
+  var instances = [];
+  addEnums(CL);
+  return CL;
 
-  function init(parameters) {
-    console.log("init: ", parameters);
+  function CL(parameters)
+  {
+    console.log("CL constructor: ", parameters);
     parameters = parameters || {};
-    var temp = self.setup;
-    delete self.setup;
-    CL.Impl = new Implementation();
-    CL.Impl.DEBUG = parameters.debug || false;
-    CL.Impl.CLEANUP = !(parameters.cleanup === false);
-    CL.Impl.PROFILE = !(parameters.profile === false);
-    CL.Impl.addCleanupWrappers(self, "CL");
-    self.setup = temp;
+
+    IMP = new Imp();
+    IMP.DEBUG = parameters.debug || false;
+    IMP.CLEANUP = !(parameters.cleanup === false);
+    IMP.PROFILE = !(parameters.profile === false);
+
+    API.INSTANCE++;
+    var cloneAPI = {};
+    for (var p in API) {
+      cloneAPI[p] = API[p];
+    }
+
     if (window.WebCL) {
-      setupEnums();
-      self.platforms.length = 0;
-      self.devices.length = 0;
-      self.platforms = platformFactory();
-      for (var p=0; p < self.platforms.length; p++) {
-        self.devices = self.devices.concat(self.platforms[p].devices);
+      cloneAPI.platforms.length = 0;
+      cloneAPI.devices.length = 0;
+      cloneAPI.platforms = platformFactory();
+      for (var p=0; p < cloneAPI.platforms.length; p++) {
+        cloneAPI.devices = cloneAPI.devices.concat(cloneAPI.platforms[p].devices);
       }
+      if (IMP.CLEANUP) {
+        instances.push(cloneAPI);  // add to the queue of to-be-cleaned-up CL instances
+      }
+      IMP.addCleanupWrapper(cloneAPI, "createContext", "CL");
     }
-    if (CL.Impl.CLEANUP) {
-      window.onbeforeunload = CL.releaseAll;
-    };
-  };
 
-  function platformFactory() {
-    var numGPU = 0;
-    var numCPU = 0;
-
-    function deviceFactory(platform) {
-      var clDevices = [];
-      var devices = platform.peer.getDevices(CL.DEVICE_TYPE_ALL);
-      for (var d=0; d < devices.length; d++) {
-        var isAvailable = devices[d].getDeviceInfo(CL.DEVICE_AVAILABLE);
-        var isCompilerAvailable = devices[d].getDeviceInfo(CL.DEVICE_COMPILER_AVAILABLE);
-        if (isAvailable && isCompilerAvailable) {
-          var device = new CL.Device();
-          device.isAvailable = true;
-          device.peer = devices[d];
-          device.platform = platform;
-          device.name = device.peer.getDeviceInfo(CL.DEVICE_NAME);
-          device.version = device.peer.getDeviceInfo(CL.DEVICE_VERSION);
-          device.vendor = device.peer.getDeviceInfo(CL.DEVICE_VENDOR);
-          var type = device.peer.getDeviceInfo(CL.DEVICE_TYPE);
-          if (type === CL.DEVICE_TYPE_CPU) {
-            device.type = 'CPU';
-            device.id = 'CPU' + (numCPU+1);
-            numCPU++;
-          } else {
-            device.type = 'GPU';
-            device.id = 'GPU' + (numGPU+1);
-            numGPU++;
-          }
-          clDevices.push(device);
-        }
+    window.onbeforeunload = function() {
+      //alert("Cleaning up " + instances.length + " CL instances");
+      for (var i=0; i < instances.length; i++) {
+        instance[i].releaseAll();
+        instance[i].delete();
       }
-      return clDevices;
     };
 
-    var clPlatforms = [];
-    var platforms = WebCL.getPlatforms();
-    for (var p=0; p < platforms.length; p++) {
-      clPlatforms[p] = new CL.Platform();
-      clPlatforms[p].peer = platforms[p];
-      clPlatforms[p].vendor = platforms[p].getPlatformInfo(CL.PLATFORM_VENDOR);
-      clPlatforms[p].devices = deviceFactory(clPlatforms[p]);
-    }
-    return clPlatforms;
+    console.log("# of CL instances marked for automatic cleanup: ", instances.length);
+    return cloneAPI;
   };
 
-  function setupEnums() {
+  function addEnums(theObject) {
     for (var legacyEnumName in WebCL) {
       if (typeof WebCL[legacyEnumName] === 'number') {
         var newEnumName = legacyEnumName.slice(3);
-        CL[newEnumName] = WebCL[legacyEnumName];
+        theObject[newEnumName] = WebCL[legacyEnumName];
       }
     }
   };
@@ -354,650 +318,645 @@ CL.setup = function(parameters) {
     }
     return true;
   };
-};
 
-// ### CL.Platform ###
-// Automatically instantiated by `CL.setup()`
-//
-CL.Platform = function(parameters) {
-  this.peer = "CL.Platform.peer: not yet initialized";
-  this.vendor = null;
-  this.devices = [];
-};
-
-// ### CL.Device ###
-// Automatically instantiated by `CL.setup()`
-//
-CL.Device = function(parameters) {
-  this.peer = "CL.Device.peer: not yet initialized";
-  this.isAvailable = false;
-  this.platform = null;
-  this.type = null;
-  this.name = null;
-  this.version = null;
-  this.vendor = null;
-  this.contexts = [];
-
-  this.getContext = function(name) {
-    return CL.Impl.getFromArray(self.contexts, name);
-  };
-
-  this.releaseAll = function() {
-    CL.Impl.clearArray(self.contexts);
-  };
-
-  var self = this;
-};
-
-// ### CL.Context ###
-// Instantiated by `CL.createContext(()`
-//
-CL.Context = function(parameters) {
-
-  this.peer = "CL.Context.peer: not yet initialized";
-  this.platform = null;
-  this.device = null;
-  this.devices = [];
-  this.queues = [];
-  this.buffers = [];
-  this.images = [];
-  this.programs = [];
-
-  this.createCommandQueue = function(parameters) {
-    parameters = parameters || {};
-    var name = parameters.name || self.queues.length.toString();
-    var queue = new CL.CommandQueue();
-    var props = CL.Impl.PROFILE===true ? [CL.QUEUE_PROFILING_ENABLE] : null;
-    queue.peer = self.peer.createCommandQueue(self.device.peer, props);
-    queue.context = self;
-    queue.name = name;
-    self.queues.push(queue);
-    return queue;
-  };
-
-  this.createBuffer = function(parameters) {
-    parameters = parameters || {};
-    var byteLength = parameters.size || 1024;
-    var memFlags = parameters.flags || CL.MEM_READ_WRITE;
-    var name = parameters.name || self.buffers.length.toString();
-    var buffer = new CL.Buffer();
-    buffer.peer = self.peer.createBuffer(memFlags, byteLength);
-    buffer.flags = memFlags;
-    buffer.size = byteLength;
-    buffer.context = self;
-    buffer.name = name;
-    CL.Impl.removeFromArray(self.buffers, name);
-    self.buffers.push(buffer);
-    return buffer;
-  };
-
-  this.createImage = function(parameters) {
-    parameters = parameters || {};
-    var width = parameters.width || 256;
-    var height = parameters.height || 256;
-    var memFlags = parameters.flags || CL.MEM_READ_WRITE;
-    var imgFormat = parameters.format || { channelOrder : CL.RGBA, channelDataType : CL.UNSIGNED_INT8 };
-    var name = parameters.name || self.images.length.toString();
-    var image = new CL.Image();
-    image.peer = self.peer.createImage2D(memFlags, imgFormat, width, height, 0);
-    image.flags = memFlags;
-    image.format = imgFormat;
-    image.width = width;
-    image.height = height;
-    image.context = self;
-    image.name = name;
-    CL.Impl.removeFromArray(self.images, name);
-    self.images.push(image);
-    return image;
-  };
-
-  this.buildProgram = function(parameters) {
-    parameters = parameters || {};
-    var program = new CL.Program(parameters);
-    parameters.context = self;
-    program.build(parameters);
-    self.programs.push(program);
-    return program;
-  };
-
-  this.buildKernels = function(parameters) {
-    var program = self.buildProgram(parameters);
-    return program.kernels;
-  };
-
-  this.buildKernel = function(parameters) {
-    return self.buildKernels(parameters)[0];
-  };
-
-  this.getBuffer = function(name) {
-    return CL.Impl.getFromArray(self.buffers, name);
-  };
-
-  this.getImage = function(name) {
-    return CL.Impl.getFromArray(self.images, name);
-  };
-
-  this.getKernel = function(name) {
-    for (var p=0; p < self.programs.length; p++) {
-      var result = self.programs[p].getKernel(name);
-      if (result !== null) {
-        return result;
-      }
+  function platformFactory() {
+    var numGPU = 0;
+    var numCPU = 0;
+    var clPlatforms = [];
+    var platforms = WebCL.getPlatforms();
+    for (var p=0; p < platforms.length; p++) {
+      clPlatforms[p] = new Platform();
+      clPlatforms[p].peer = platforms[p];
+      clPlatforms[p].vendor = platforms[p].getPlatformInfo(CL.PLATFORM_VENDOR);
+      clPlatforms[p].devices = deviceFactory(clPlatforms[p]);
     }
-    return null;
-  };
+    return clPlatforms;
 
-  this.getQueue = function(name) {
-    return CL.Impl.getFromArray(self.queues, name);
-  };
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      console.log("CL.Context.releaseAll");
-      CL.Impl.clearArray(self.programs);
-      CL.Impl.clearArray(self.queues);
-      CL.Impl.clearArray(self.buffers);
-      self.peer.releaseCLResources();
-      self.peer = "CL.Context.peer: de-initialized";
-    }
-  };
-
-  var self = this;
-  CL.Impl.addCleanupWrappers(self, "CL.Context");
-};
-
-// ### CL.CommandQueue ###
-// Instantiated by `CL.Context.createCommandQueue()`
-//
-CL.CommandQueue = function(parameters) {
-  this.peer = "CL.CommandQueue.peer: not yet initialized";
-  this.context = null;
-
-  this.enqueueKernel = function(kernel, globalws, localws) {
-    var localws = localws || [];
-    var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
-    var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
-    events.push(event);
-    return event;
-  };
-
-  this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
-    var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
-    var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-    var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
-    events.push(event);
-    return event;
-  };
-
-  this.enqueueReadBuffer = function(srcBuffer, dstArray) {
-    var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
-    var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-    var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
-    events.push(event);
-    return event;
-  };
-
-  this.enqueueBarrier = function(eventWaitList) {
-    if (eventWaitList && eventWaitList.length > 0) {
-      self.peer.enqueueWaitForEvents(eventWaitList);
-    } else {
-      self.peer.enqueueBarrier();
-    }
-    var event = self.peer.enqueueMarker();
-    events.push(event);
-    return event;
-  };
-
-  this.finish = function() {
-    self.peer.finish();
-  };
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      for (var i=0; i < events.length; i++) {
-        events[i].releaseCLResources();
-        delete events[i];
-      }
-      events.length = 0;
-      self.peer = "CL.CommandQueue.peer: de-initialized";
-   }
-  };
-
-  var self = this;
-  var events = [];
-  CL.Impl.addCleanupWrappers(self, "CL.CommandQueue");
-};
-
-// ### CL.Program ###
-// Instantiated by `CL.Context.buildProgram()`
-//
-CL.Program = function(parameters) {
-
-  this.peer = "CL.Program.peer: not yet initialized";
-  this.built = false;
-  this.compilerOpts = null;
-  this.compilerDefs = null;
-  this.kernels = [];
-  this.kernel = null;
-  this.context = null;
-  this.source = null;
-  this.uri = null;
-
-  this.build = function(parameters) {
-    parameters = parameters || {};
-    self.context = parameters.context;
-    self.compilerOpts = parameters.opts || "";
-    self.compilerDefs = "";
-    for (var d in parameters.defines) {
-      self.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
-    }
-    if (self.context && (self.source || self.ptx)) {
-      try {
-        if (self.source) {
-          self.peer = self.context.peer.createProgramWithSource(self.source);
-        } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
-          self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
-        }
-        self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
-        if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
-          self.kernels = kernelFactory(self);
-          if (self.kernels.length > 0) {
-            self.kernel = self.kernels[0];
-            self.built = true;
+    function deviceFactory(platform) {
+      var clDevices = [];
+      var devices = platform.peer.getDevices(CL.DEVICE_TYPE_ALL);
+      for (var d=0; d < devices.length; d++) {
+        var isAvailable = devices[d].getDeviceInfo(CL.DEVICE_AVAILABLE);
+        var isCompilerAvailable = devices[d].getDeviceInfo(CL.DEVICE_COMPILER_AVAILABLE);
+        if (isAvailable && isCompilerAvailable) {
+          var device = new Device();
+          device.isAvailable = true;
+          device.peer = devices[d];
+          device.platform = platform;
+          device.name = device.peer.getDeviceInfo(CL.DEVICE_NAME);
+          device.version = device.peer.getDeviceInfo(CL.DEVICE_VERSION);
+          device.vendor = device.peer.getDeviceInfo(CL.DEVICE_VENDOR);
+          var type = device.peer.getDeviceInfo(CL.DEVICE_TYPE);
+          if (type === CL.DEVICE_TYPE_CPU) {
+            device.type = 'CPU';
+            device.id = 'CPU' + (numCPU+1);
+            numCPU++;
+          } else {
+            device.type = 'GPU';
+            device.id = 'GPU' + (numGPU+1);
+            numGPU++;
           }
-        }
-        if (!self.built) {
-          throw "Kernel compilation failed, although the compiler claims it succeeded.";
-        }
-      } catch(e) {
-        if (self.peer.getProgramBuildInfo) {
-          var info = this.getBuildLog();
-        } else {
-          var info = "Failed to create a WebCLProgram object";
-        }
-        console.log("[" + self.context.platform.vendor + "]", e, info);
-        throw e + info;
-      }
-    } else {
-      var msg = "Cannot build program: missing ";
-      msg += self.context? "kernel source code" : "CL.Context";
-      throw msg;
-    }
-  };
-
-  this.getBuildStatus = function() {
-    var status = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
-    return status;
-  };
-  
-  this.getBuildLog = function() {
-    var log = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
-    return log;
-  };
-
-  this.getKernel = function(name) {
-    return CL.Impl.getFromArray(self.kernels, name);
-  };
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      self.peer = "CL.Program.peer: de-initialized";
-      CL.Impl.clearArray(self.kernels);
-    }
-  };
-
-  // ### Implementation ###
-
-  var self = this;
-  init(parameters);
-  CL.Impl.addCleanupWrappers(self, "CL.Program");
-
-  function init(parameters) {
-    parameters = parameters || {};
-    if (parameters.uri) {
-      self.uri = parameters.uri;
-      self.source = CL.loadSource(parameters.uri);
-    } else if (parameters.source) {
-      self.source = parameters.source;
-    } else if (parameters.ptx) {
-      self.ptx = parameters.ptx;
-    }
-  };
-
-  function kernelFactory(program) {
-    var clKernels = [];
-    var context = program.context;
-    var device = program.context.device;
-    var kernels = program.peer.createKernelsInProgram();
-    for (var k=0; k < kernels.length; k++) {
-      clKernels[k] = new CL.Kernel();
-      clKernels[k].peer = kernels[k];
-      clKernels[k].program = program;
-      clKernels[k].context = context;
-      clKernels[k].device = device;
-      clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
-      clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
-      clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
-      clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
-      clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
-      //clKernels[k].argTypes = getKernelArgTypes(clKernels[k]);
-    }
-    return clKernels;
-  };
-
-  // Tries to infer the type of each kernel argument by trying to set
-  // them and catching exceptions.  Unfortunately, it's impossible to
-  // distinguish pointers from integers of the same size, so we're not
-  // currently using the inferred types for anything.
-  // 
-  function getKernelArgTypes(kernel) {
-    var argTypes = [];
-    for (var i=0; i < kernel.numArgs; i++) {
-      var type = null;
-      type = type || tryArgType("BUFFER");
-      type = type || tryArgType("LOCAL");
-      type = type || tryArgType("SHORT");
-      type = type || tryArgType("USHORT");
-      type = type || tryArgType("INT");
-      type = type || tryArgType("UINT");
-      type = type || tryArgType("LONG");
-      type = type || tryArgType("ULONG");
-      type = type || tryArgType("FLOAT");
-      argTypes[i] = type;
-    }
-    console.log("Inferred argument types for kernel '"+kernel.name+"': " + argTypes);
-    return argTypes;
-
-    function tryArgType(type) {
-      try {
-        switch (type) {
-        case "BUFFER":
-          var spareBuffer = self.context.getBuffer('spare');
-          kernel.peer.setKernelArg(i, spareBuffer.peer);
-          return type;
-        case "IMAGE":
-          console.log("image argument type detection not yet implemented.");
-          return null;
-        case "LOCAL":
-          kernel.peer.setKernelArgLocal(i, 512);
-          return type;
-        case "SHORT":
-          kernel.peer.setKernelArg(i, 0x1234, WebCL.types.SHORT);
-          return type;
-        case "USHORT":
-          kernel.peer.setKernelArg(i, 0x1234, WebCL.types.USHORT);
-          return type;
-        case "INT":
-          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.INT);
-          return type;
-        case "UINT":
-          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.UINT);
-          return type;
-        case "LONG":
-          kernel.peer.setKernelArg(i, 0x12345678deadbeef, WebCL.types.LONG);
-          return type;
-        case "ULONG":
-          kernel.peer.setKernelArg(i, 0x12345678deadbeef, WebCL.types.ULONG);
-          return type;
-        case "FLOAT":
-          kernel.peer.setKernelArg(i, 0x12345678, WebCL.types.FLOAT);
-          return type;
-        default:
-          return null;
-        }
-      } catch (e) {
-        return null;
-      }
-    }
-  };
-};
-
-// ### CL.Kernel ###
-// Instantiated by `CL.Program.build()`
-//
-CL.Kernel = function(parameters) {
-  this.peer = "CL.Kernel.peer: not yet initialized";
-  this.name = "uninitialized";
-  this.numArgs = -1;
-  this.argTypes = null;
-  this.maxWorkGroupSize = -1;
-  this.localMemSize = -1;
-  this.privateMemSize = -1;
-  this.program = null;
-  this.context = null;
-  this.device = null;
-  
-  this.setArg = function(index, value) {
-    var isArray = (value instanceof Array);
-    var isNumber = (typeof value === 'number');
-    var isFloat = isNumber && (Math.floor(value) !== value);
-    var isInt = isNumber && !isFloat;
-    var isTypedArray = (value.buffer instanceof ArrayBuffer)
-    var isMemObject = (value instanceof CL.Buffer || value instanceof CL.Image);
-    var isNamedObject = (typeof value === 'string');
-
-    if (isNamedObject || isMemObject) {
-      var memObject = isMemObject && value;
-      memObject = memObject || self.context.getBuffer(value);
-      memObject = memObject || self.context.getImage(value);
-      self.peer.setKernelArg(index, memObject.peer);
-    } else if (isTypedArray) {
-      self.peer.setKernelArg(index, value);
-    } else if (isArray) {
-      throw "Invalid kernel argument type: JavaScript Array arguments not supported.";
-    } else if (isFloat) {
-      self.peer.setKernelArg(index, value, WebCL.types.FLOAT);
-    } else if (isInt) {
-      var type = undefined;
-      type = type || tryArgType(index, value, WebCL.types.INT);
-      type = type || tryArgType(index, value, WebCL.types.LONG);
-      type = type || tryArgType(index, value, WebCL.types.SHORT);
-      type = type || tryArgType(index, value, WebCL.types.FLOAT);
-      if (type === undefined) {
-        try {
-          self.peer.setKernelArgLocal(index, value);
-          type = "LOCAL";
-        } catch (e) {
-          throw "Unrecognized kernel argument type: " + value;
+          clDevices.push(device);
         }
       }
-    }
-
-    function tryArgType(index, value, type) {
-      try {
-        self.peer.setKernelArg(index, value, type);
-        return type;
-      } catch (e) {}
-    }
+      return clDevices;
+    };
   };
 
-  this.setArgs = function() {
-    for (var i=0; i < arguments.length; i++) {
-      self.setArg(i, arguments[i]);
-    }
+  // ### Platform ###
+  // Automatically instantiated by CL constructor
+  //
+  function Platform(parameters) {
+    this.peer = "Platform.peer: not yet initialized";
+    this.vendor = null;
+    this.devices = [];
   };
 
-  this.getInfo = function(paramName) {
-    return this.peer.getKernelInfo(paramName);
+  // ### Device ###
+  // Automatically instantiated by CL constructor
+  //
+  function Device(parameters) {
+    this.peer = "Device.peer: not yet initialized";
+    this.isAvailable = false;
+    this.platform = null;
+    this.type = null;
+    this.name = null;
+    this.version = null;
+    this.vendor = null;
+    this.contexts = [];
+
+    this.getContext = function(name) {
+      return IMP.getFromArray(this.contexts, name);
+    };
+
+    this.releaseAll = function() {
+      IMP.clearArray(this.contexts);
+    };
   };
 
-  this.getWorkGroupInfo = function(device, paramName) {
-    return this.peer.getKernelWorkGroupInfo(device.peer, paramName);
-  };
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      self.peer = "CL.Kernel.peer: de-initialized";
-    }
-  };
-
-  // ### Implementation ###
-
-  var self = this;
-  CL.Impl.addCleanupWrappers(self, "CL.Kernel");
-};
-
-// ### CL.Buffer ###
-// Instantiated by `CL.Context.createBuffer()`
-//
-CL.Buffer = function(parameters) {
-  this.peer = "CL.Buffer.peer: not yet initialized";
-  this.context = null;
-  this.flags = -1;
-  this.size = -1;
-  this.name = "uninitialized";
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      self.peer = "CL.Buffer.peer: de-initialized";
-    }
-  };
-
-  var self = this;
-};
-
-// ### CL.Image ###
-// Instantiated by `CL.Context.createImage()`
-//
-CL.Image = function(parameters) {
-  this.peer = "CL.Image.peer: not yet initialized";
-  this.context = null;
-  this.flags = -1;
-  this.format = -1;
-  this.width = -1;
-  this.height = -1;
-  this.name = "uninitialized";
-
-  this.releaseAll = function() {
-    if (self.peer.releaseCLResources) {
-      self.peer.releaseCLResources();
-      self.peer = "CL.Image.peer: de-initialized";
-    }
-  };
-
-  var self = this;
-};
-
-// ## Internal Implementation ##
-//
-// Internal helper and wrapper functions that are not supposed to be
-// called from outside CL.js.
-// 
-function Implementation() {
-
-  // The `DEBUG` flag enables/disables debug messages on the
-  // console at runtime.
+  // ### Context ###
+  // Instantiated by `createContext()`
   //
-  this.DEBUG = false;
+  function Context(parameters) {
 
-  // The `CLEANUP` flag enables/disables automatic release of WebCL
-  // resources when leaving the page or when an exception occurs.
-  //
-  this.CLEANUP = true;
+    this.peer = "Context.peer: not yet initialized";
+    this.platform = null;
+    this.device = null;
+    this.devices = [];
+    this.queues = [];
+    this.buffers = [];
+    this.images = [];
+    this.programs = [];
 
-  // The `PROFILE` flag enables/disables profiling support on WebCL
-  // command queues, but does not automatically do any profiling if
-  // enabled.
-  //
-  this.PROFILE = true;
+    this.createCommandQueue = function(parameters) {
+      parameters = parameters || {};
+      var name = parameters.name || self.queues.length.toString();
+      var queue = new CommandQueue();
+      var props = IMP.PROFILE===true ? [CL.QUEUE_PROFILING_ENABLE] : null;
+      queue.peer = self.peer.createCommandQueue(self.device.peer, props);
+      queue.context = self;
+      queue.name = name;
+      self.queues.push(queue);
+      return queue;
+    };
 
-  // #### clearArray ####
-  //
-  // Loops through all CL objects in `theArray` and releases their
-  // native resources.  Will fail if `theArray` is not an Array or
-  // contains anything else than CL.js objects.
-  //
-  this.clearArray = function(theArray) {
-    for (var i=0; i < theArray.length; i++) {
-      theArray[i].releaseAll();
-      delete theArray[i];
-    }
-    theArray.length = 0;
-  };
+    this.createBuffer = function(parameters) {
+      parameters = parameters || {};
+      var byteLength = parameters.size || 1024;
+      var memFlags = parameters.flags || CL.MEM_READ_WRITE;
+      var name = parameters.name || self.buffers.length.toString();
+      var buffer = new Buffer();
+      buffer.peer = self.peer.createBuffer(memFlags, byteLength);
+      buffer.flags = memFlags;
+      buffer.size = byteLength;
+      buffer.context = self;
+      buffer.name = name;
+      IMP.removeFromArray(self.buffers, name);
+      self.buffers.push(buffer);
+      return buffer;
+    };
 
-  // #### removeFromArray ####
-  //
-  // Removes the object by the given `name` from `theArray`, and
-  // releases the native CL resources of that object.
-  //
-  this.removeFromArray = function(theArray, name) {
-    for (var i=0; i < theArray.length; i++) {
-      var theObject = theArray[i];
-      if (theObject.name === name) {
-        theObject.releaseAll();
-        theArray.splice(i, 1);
-      }
-    }
-  };
+    this.createImage = function(parameters) {
+      parameters = parameters || {};
+      var width = parameters.width || 256;
+      var height = parameters.height || 256;
+      var memFlags = parameters.flags || CL.MEM_READ_WRITE;
+      var imgFormat = parameters.format || { channelOrder : CL.RGBA, channelDataType : CL.UNSIGNED_INT8 };
+      var name = parameters.name || self.images.length.toString();
+      var image = new Image();
+      image.peer = self.peer.createImage2D(memFlags, imgFormat, width, height, 0);
+      image.flags = memFlags;
+      image.format = imgFormat;
+      image.width = width;
+      image.height = height;
+      image.context = self;
+      image.name = name;
+      IMP.removeFromArray(self.images, name);
+      self.images.push(image);
+      return image;
+    };
 
-  // #### getFromArray ####
-  //
-  // Retrieves the object by the given `name` from `theArray`.
-  // Returns `null` if no object by that name is found.
-  //
-  this.getFromArray = function(theArray, name) {
-    for (var i=0; i < theArray.length; i++) {
-      if (theArray[i].name === name) {
-        return theArray[i];
-      }
-    }
-    return null;
-  };
+    this.buildProgram = function(parameters) {
+      parameters = parameters || {};
+      var program = new Program(parameters);
+      parameters.context = self;
+      program.build(parameters);
+      self.programs.push(program);
+      return program;
+    };
 
-  var self = this;
+    this.buildKernels = function(parameters) {
+      var program = self.buildProgram(parameters);
+      return program.kernels;
+    };
 
-  // #### addCleanupWrappers ####
-  //
-  // Wraps a try-catch block around each function in `theObject`.
-  // Internal functions (prefixed by an underscore) are not wrapped.
-  //
-  // If an exception occurs in a wrapped function at runtime and the
-  // `CLEANUP` flag is set, all CL resources created by CL.js are
-  // automatically released by calling `CL.releaseAll`.  Similarly, if
-  // the `DEBUG` flag is set, an error message is displayed on the
-  // console before throwing the exception upwards in the call chain.
-  //
-  this.addCleanupWrappers = function(theObject, className) {
-    var methodNames = [];
-    for (var propertyName in theObject) {
-      if (typeof theObject[propertyName] === 'function' && propertyName[0] == propertyName.toLowerCase()[0]) {
-        methodNames.push(propertyName);
-      }
-    }
-    for (var i=0; i < methodNames.length; i++) {
-      var name = methodNames[i];
-      var publicName = name;
-      if (publicName.indexOf('_') !== 0) {
-        var privateName = '_'+name;
-        theObject[privateName] = theObject[name];
-        theObject[publicName] = makeTryCatchWrapper(theObject, privateName, className);
-      }
-    }
-  };
+    this.buildKernel = function(parameters) {
+      return self.buildKernels(parameters)[0];
+    };
 
-  function makeTryCatchWrapper(theObject, functionName, className) {
-    var newFunction = function() {
-      try {
-        return theObject[functionName].apply(theObject, arguments);
-      } catch (e) {
-        if (self.DEBUG) {
-          console.log("WebCLException trapped by CL.js:");
-          console.log("  "+className+"."+functionName.slice(1), theObject[functionName]);
-          console.log("  ", arguments);
-          console.log("  ", theObject);
-          console.log("  ", e);
+    this.getBuffer = function(name) {
+      return IMP.getFromArray(self.buffers, name);
+    };
+
+    this.getImage = function(name) {
+      return IMP.getFromArray(self.images, name);
+    };
+
+    this.getKernel = function(name) {
+      for (var p=0; p < self.programs.length; p++) {
+        var result = self.programs[p].getKernel(name);
+        if (result !== null) {
+          return result;
         }
-        if (self.CLEANUP) {
-          CL.releaseAll();
-        }
-        throw className + "." + functionName.slice(1) + ": " + e;
+      }
+      return null;
+    };
+
+    this.getQueue = function(name) {
+      return IMP.getFromArray(self.queues, name);
+    };
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        console.log("Context.releaseAll");
+        IMP.clearArray(self.programs);
+        IMP.clearArray(self.queues);
+        IMP.clearArray(self.buffers);
+        self.peer.releaseCLResources();
+        self.peer = "Context.peer: de-initialized";
       }
     };
-    return newFunction;
+
+    IMP.addCleanupWrapper(this, "createCommandQueue", "Context");
+    IMP.addCleanupWrapper(this, "createBuffer", "Context");
+    IMP.addCleanupWrapper(this, "createImage", "Context");
+
+    var self = this;
   };
 
-};
+  // ### Buffer ###
+  // Instantiated by `Context.createBuffer()`
+  //
+  function Buffer(parameters) {
+    this.peer = "Buffer.peer: not yet initialized";
+    this.context = null;
+    this.flags = -1;
+    this.size = -1;
+    this.name = "uninitialized";
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        self.peer.releaseCLResources();
+        self.peer = "Buffer.peer: de-initialized";
+      }
+    };
+
+    var self = this;
+  };
+
+  // ### Image ###
+  // Instantiated by `Context.createImage()`
+  //
+  function Image(parameters) {
+    this.peer = "Image.peer: not yet initialized";
+    this.context = null;
+    this.flags = -1;
+    this.format = -1;
+    this.width = -1;
+    this.height = -1;
+    this.name = "uninitialized";
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        self.peer.releaseCLResources();
+        self.peer = "Image.peer: de-initialized";
+      }
+    };
+
+    var self = this;
+  };
+
+  // ### CommandQueue ###
+  // Instantiated by `Context.createCommandQueue()`
+  //
+  function CommandQueue(parameters) {
+    this.peer = "CommandQueue.peer: not yet initialized";
+    this.context = null;
+
+    this.enqueueKernel = function(kernel, globalws, localws) {
+      var localws = localws || [];
+      var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
+      var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
+      events.push(event);
+      return event;
+    };
+
+    this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
+      var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
+      var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
+      var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
+      events.push(event);
+      return event;
+    };
+
+    this.enqueueReadBuffer = function(srcBuffer, dstArray) {
+      var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
+      var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
+      var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
+      events.push(event);
+      return event;
+    };
+
+    this.enqueueBarrier = function(eventWaitList) {
+      if (eventWaitList && eventWaitList.length > 0) {
+        self.peer.enqueueWaitForEvents(eventWaitList);
+      } else {
+        self.peer.enqueueBarrier();
+      }
+      var event = self.peer.enqueueMarker();
+      events.push(event);
+      return event;
+    };
+
+    this.finish = function() {
+      self.peer.finish();
+    };
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        self.peer.releaseCLResources();
+        for (var i=0; i < events.length; i++) {
+          events[i].releaseCLResources();
+          delete events[i];
+        }
+        events.length = 0;
+        self.peer = "CommandQueue.peer: de-initialized";
+      }
+    };
+
+    var self = this;
+    var events = [];
+
+    IMP.addCleanupWrapper(this, "enqueueKernel", "CommandQueue");
+    IMP.addCleanupWrapper(this, "enqueueWriteBuffer", "CommandQueue");
+    IMP.addCleanupWrapper(this, "enqueueReadBuffer", "CommandQueue");
+    IMP.addCleanupWrapper(this, "enqueueBarrier", "CommandQueue");
+    IMP.addCleanupWrapper(this, "finish", "CommandQueue");
+  };
+
+  // ### Program ###
+  // Instantiated by `Context.buildProgram()`
+  //
+  function Program(parameters) {
+
+    this.peer = "Program.peer: not yet initialized";
+    this.built = false;
+    this.compilerOpts = null;
+    this.compilerDefs = null;
+    this.kernels = [];
+    this.kernel = null;
+    this.context = null;
+    this.source = null;
+    this.uri = null;
+
+    this.build = function(parameters) {
+      parameters = parameters || {};
+      self.context = parameters.context;
+      self.compilerOpts = parameters.opts || "";
+      self.compilerDefs = "";
+      for (var d in parameters.defines) {
+        self.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
+      }
+      if (self.context && (self.source || self.ptx)) {
+        try {
+          if (self.source) {
+            self.peer = self.context.peer.createProgramWithSource(self.source);
+          } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
+            self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
+          }
+          self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
+          if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
+            self.kernels = kernelFactory(self);
+            if (self.kernels.length > 0) {
+              self.kernel = self.kernels[0];
+              self.built = true;
+            }
+          }
+          if (!self.built) {
+            throw "Kernel compilation failed, although the compiler claims it succeeded.";
+          }
+        } catch(e) {
+          if (self.peer.getProgramBuildInfo) {
+            var info = this.getBuildLog();
+          } else {
+            var info = "Failed to create a WebCLProgram object";
+          }
+          console.log("[" + self.context.platform.vendor + "]", e, info);
+          throw e + info;
+        }
+      } else {
+        var msg = "Cannot build program: missing ";
+        msg += self.context? "kernel source code" : "CL.Context";
+        throw msg;
+      }
+    };
+
+    this.getBuildStatus = function() {
+      var status = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
+      return status;
+    };
+    
+    this.getBuildLog = function() {
+      var log = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+      return log;
+    };
+
+    this.getKernel = function(name) {
+      return IMP.getFromArray(self.kernels, name);
+    };
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        self.peer.releaseCLResources();
+        self.peer = "Program.peer: de-initialized";
+        IMP.clearArray(self.kernels);
+      }
+    };
+
+    // ### Implementation ###
+
+    var self = this;
+    init(parameters);
+    IMP.addCleanupWrapper(this, "build", "Program");
+    IMP.addCleanupWrapper(this, "getBuildStatus", "Program");
+    IMP.addCleanupWrapper(this, "getBuildLog", "Program");
+    IMP.addCleanupWrapper(this, "getKernel", "Program");
+
+    function init(parameters) {
+      parameters = parameters || {};
+      if (parameters.uri) {
+        self.uri = parameters.uri;
+        self.source = API.loadSource(parameters.uri);
+      } else if (parameters.source) {
+        self.source = parameters.source;
+      } else if (parameters.ptx) {
+        self.ptx = parameters.ptx;
+      }
+    };
+
+    function kernelFactory(program) {
+      var clKernels = [];
+      var context = program.context;
+      var device = program.context.device;
+      var kernels = program.peer.createKernelsInProgram();
+      for (var k=0; k < kernels.length; k++) {
+        clKernels[k] = new Kernel();
+        clKernels[k].peer = kernels[k];
+        clKernels[k].program = program;
+        clKernels[k].context = context;
+        clKernels[k].device = device;
+        clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
+        clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
+        clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+        clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
+        clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
+        //clKernels[k].argTypes = getKernelArgTypes(clKernels[k]);
+      }
+      return clKernels;
+    };
+  };
+
+  // ### Kernel ###
+  // Instantiated by `Program.build()`
+  //
+  function Kernel(parameters) {
+    this.peer = "Kernel.peer: not yet initialized";
+    this.name = "uninitialized";
+    this.numArgs = -1;
+    this.argTypes = null;
+    this.maxWorkGroupSize = -1;
+    this.localMemSize = -1;
+    this.privateMemSize = -1;
+    this.program = null;
+    this.context = null;
+    this.device = null;
+    
+    this.setArg = function(index, value) {
+      var isArray = (value instanceof Array);
+      var isNumber = (typeof value === 'number');
+      var isFloat = isNumber && (Math.floor(value) !== value);
+      var isInt = isNumber && !isFloat;
+      var isTypedArray = (value.buffer instanceof ArrayBuffer)
+      var isMemObject = (value instanceof Buffer || value instanceof Image);
+      var isNamedObject = (typeof value === 'string');
+
+      if (isNamedObject || isMemObject) {
+        var memObject = isMemObject && value;
+        memObject = memObject || self.context.getBuffer(value);
+        memObject = memObject || self.context.getImage(value);
+        self.peer.setKernelArg(index, memObject.peer);
+      } else if (isTypedArray) {
+        self.peer.setKernelArg(index, value);
+      } else if (isArray) {
+        throw "Invalid kernel argument type: JavaScript Array arguments not supported.";
+      } else if (isFloat) {
+        self.peer.setKernelArg(index, value, WebCL.types.FLOAT);
+      } else if (isInt) {
+        var type = undefined;
+        type = type || tryArgType(index, value, WebCL.types.INT);
+        type = type || tryArgType(index, value, WebCL.types.LONG);
+        type = type || tryArgType(index, value, WebCL.types.SHORT);
+        type = type || tryArgType(index, value, WebCL.types.FLOAT);
+        if (type === undefined) {
+          try {
+            self.peer.setKernelArgLocal(index, value);
+            type = "LOCAL";
+          } catch (e) {
+            throw "Unrecognized kernel argument type: " + value;
+          }
+        }
+      }
+
+      function tryArgType(index, value, type) {
+        try {
+          self.peer.setKernelArg(index, value, type);
+          return type;
+        } catch (e) {}
+      }
+    };
+
+    this.setArgs = function() {
+      for (var i=0; i < arguments.length; i++) {
+        self.setArg(i, arguments[i]);
+      }
+    };
+
+    this.getInfo = function(paramName) {
+      return this.peer.getKernelInfo(paramName);
+    };
+
+    this.getWorkGroupInfo = function(device, paramName) {
+      return this.peer.getKernelWorkGroupInfo(device.peer, paramName);
+    };
+
+    this.releaseAll = function() {
+      if (self.peer.releaseCLResources) {
+        self.peer.releaseCLResources();
+        self.peer = "Kernel.peer: de-initialized";
+      }
+    };
+
+    // ### Implementation ###
+
+    var self = this;
+
+    IMP.addCleanupWrapper(this, "setArg", "Kernel");
+    IMP.addCleanupWrapper(this, "getInfo", "Kernel");
+    IMP.addCleanupWrapper(this, "getWorkGroupInfo", "Kernel");
+  };
+
+  function Imp() {
+
+    // The `DEBUG` flag enables/disables debug messages on the
+    // console at runtime.
+    //
+    this.DEBUG = false;
+
+    // The `CLEANUP` flag enables/disables automatic release of WebCL
+    // resources when leaving the page or when an exception occurs.
+    //
+    this.CLEANUP = true;
+
+    // The `PROFILE` flag enables/disables profiling support on WebCL
+    // command queues, but does not automatically do any profiling if
+    // enabled.
+    //
+    this.PROFILE = true;
+
+    // #### clearArray ####
+    //
+    // Loops through all CL objects in `theArray` and releases their
+    // native resources.  Will fail if `theArray` is not an Array or
+    // contains anything else than CL.js objects.
+    //
+    this.clearArray = function(theArray) {
+      for (var i=0; i < theArray.length; i++) {
+        theArray[i].releaseAll();
+        delete theArray[i];
+      }
+      theArray.length = 0;
+    };
+
+    // #### removeFromArray ####
+    //
+    // Removes the object by the given `name` from `theArray`, and
+    // releases the native CL resources of that object.
+    //
+    this.removeFromArray = function(theArray, name) {
+      for (var i=0; i < theArray.length; i++) {
+        var theObject = theArray[i];
+        if (theObject.name === name) {
+          theObject.releaseAll();
+          theArray.splice(i, 1);
+        }
+      }
+    };
+
+    // #### getFromArray ####
+    //
+    // Retrieves the object by the given `name` from `theArray`.
+    // Returns `null` if no object by that name is found.
+    //
+    this.getFromArray = function(theArray, name) {
+      for (var i=0; i < theArray.length; i++) {
+        if (theArray[i].name === name) {
+          return theArray[i];
+        }
+      }
+      return null;
+    };
+
+    // #### addCleanupWrappers ####
+    //
+    // Wraps a try-catch block around each function in `theObject`.
+    // Internal functions (prefixed by an underscore) are not wrapped.
+    //
+    // If an exception occurs in a wrapped function at runtime and the
+    // `CLEANUP` flag is set, all CL resources created by CL.js are
+    // automatically released by calling `CL.releaseAll`.  Similarly, if
+    // the `DEBUG` flag is set, an error message is displayed on the
+    // console before throwing the exception upwards in the call chain.
+    //
+    this.addCleanupWrappers = function(theObject, className) {
+
+      var methodNames = [];
+      for (var propertyName in theObject) {
+        if (typeof theObject[propertyName] === 'function' && propertyName[0] == propertyName.toLowerCase()[0]) {
+          methodNames.push(propertyName);
+        }
+      }
+      for (var i=0; i < methodNames.length; i++) {
+        var name = methodNames[i];
+        var publicName = name;
+        if (publicName.indexOf('_') !== 0) {
+          self.addCleanupWrapper(theObject, publicName, className);
+        }
+      }
+
+    };
+
+    this.addCleanupWrapper = function(theObject, theFunction, className) {
+      var publicFunc = theFunction;
+      var privateFunc = '_'+publicFunc;
+      theObject[privateFunc] = theObject[publicFunc];
+      theObject[publicFunc] = makeTryCatchWrapper(theObject, publicFunc, privateFunc, className);
+      //console.log("  wrapped", publicFunc, "over", privateFunc, "on", theObject);
+    };
+
+    function makeTryCatchWrapper(theObject, publicFunc, privateFunc, className) {
+      var newFunction = function() {
+        try {
+          //console.log("Calling", privateFunc, "with args", arguments[0], "on object", theObject);
+          return theObject[privateFunc].apply(theObject, arguments);
+        } catch (e) {
+          if (self.DEBUG) {
+            console.log("WebCLException trapped by CL.js:");
+            console.log("  "+className+"."+publicFunc, theObject[privateFunc]);
+            console.log("  arguments: ", arguments);
+            console.log("  object: ", theObject);
+            console.log("  ", e);
+          }
+          if (self.CLEANUP) {
+            theObject.releaseAll();
+          }
+          throw className + "." + privateFunc + ": " + e;
+        }
+      };
+      return newFunction;
+    };
+
+    var self = this;
+    
+  };
+
+})();
