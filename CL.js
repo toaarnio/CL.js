@@ -132,9 +132,10 @@ var CL = (function() {
   //
   CL.releaseAll = function() {
     for (var i=0; i < instances.length; i++) {
-      instance[i].releaseAll();
-      instance[i].delete();
+      instances[i].releaseAll();
+      delete instances[i];
     }
+    instances.length = 0;
   };
 
   // ## INSTANCE VARIABLES AND METHODS
@@ -195,7 +196,7 @@ var CL = (function() {
     return ctx;
   };
 
-  // ### CL.getContext() ###
+  // ### cl.getContext() ###
   // 
   // Retrieves the Context by the given plain-text `name`, or null
   // if no context by that name exists for any Device.  See
@@ -211,6 +212,8 @@ var CL = (function() {
     return null;
   };
 
+  // ### cl.releaseAll() ###
+  // 
   API.releaseAll = function() {
     for (var d=0; d < this.devices.length; d++) {
       this.devices[d].releaseAll();
@@ -234,6 +237,8 @@ var CL = (function() {
     IMP.DEBUG = parameters.debug || false;
     IMP.CLEANUP = !(parameters.cleanup === false);
     IMP.PROFILE = !(parameters.profile === false);
+
+    // Populate the new CL instance with instance variables and methods
 
     API.INSTANCE++;
     var cloneAPI = {};
