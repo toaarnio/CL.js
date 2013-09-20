@@ -10,10 +10,10 @@ __constant float4 base_factor = ((float4)(1.0f,2.0f,3.0f,4.0f));
 // NOTE: Clang bug seems to get initializer rewriting wrong for vector types.
 //       after the support if fixed we can use initializations wihtout extra braces.
 // __constant float4 base_factor = (float4)(1.0f,2.0f,3.0f,4.0f);
-// __constant float base_table[] = { 1.0f,2.0f,3.0f,4.0f };
+// __constant__g float base_table[] = { 1.0f,2.0f,3.0f,4.0f };
 
 void empty_params(void);
-void init_scratch(size_t gid, size_t wgid, TempStruct *additional_shuffle, __global float4* input, __constant float4* factors, __local float4* scratch);
+void init_scratch(size_t gid, size_t wgid, TempStruct *additional_shuffle, __global float4* input, __global float4* factors, __local float4* scratch);
 __local float4* flip_to_awesomeness(size_t wgid, size_t wgsize, __local float4* scratch);
 
 // CHECK: empty_params(_WclProgramAllocations *_wcl_allocs)
@@ -24,7 +24,7 @@ void empty_params() {
 void init_scratch(
     size_t gid, size_t wgid,
     TempStruct *additional_shuffle,
-    __global float4* input, __constant float4* factors, __local float4* scratch) {
+    __global float4* input, __global float4* factors, __local float4* scratch) {
     scratch[wgid] = input[gid]*factors[gid]*additional_shuffle->table[gid%3];
 } 
 
@@ -42,7 +42,7 @@ __local float4* flip_to_awesomeness(size_t wgid, size_t wgsize, __local float4* 
 __kernel void awesomize(
     __global float4* input,  
     __global float4* output,
-    __constant float4* factors,
+    __global float4* factors,
     __local float4* scratch) {
 
     // check empty arg list conversion

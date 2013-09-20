@@ -324,6 +324,7 @@ describe("WebCL", function() {
           var kernel = ctx.buildKernel({ source: src, opts: "-Werror" });
           var queue = ctx.createCommandQueue();
           var buffer1M = ctx.createBuffer({ size: 1024*1024 });
+          kernel.setArgTypes('BUFFER');
           kernel.setArgs(buffer1M);
           function execute() {
             queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [results.length], [], []);
@@ -359,7 +360,7 @@ describe("WebCL", function() {
         queue.finish();
         success = true;
       } catch (e) {
-        console.log(e);
+        //console.log(e);
       }
       var t2 = Date.now();
       var stats = {
@@ -395,6 +396,8 @@ describe("WebCL", function() {
           var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
           var buffer16M = ctx.createBuffer({ size: BUFFERSIZE });
           var queue = ctx.createCommandQueue();
+          memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
+          memProtectOn.setArgSizes(1, 1, 1);
           memProtectOn.setArgs(buffer16M, WORKSIZE, 0xdeadbeef);
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msJavaScript / msProtected).toFixed(2);
@@ -446,7 +449,11 @@ describe("WebCL", function() {
           var queue = ctx.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
+          memProtectOff.setArgTypes('BUFFER', 'UINT');
+          memProtectOff.setArgSizes(1, 1);
           memProtectOff.setArgs(buffer16M, 0xdeadbeef);
+          memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
+          memProtectOn.setArgSizes(1, 1, 1);
           memProtectOn.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
           var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
@@ -471,9 +478,17 @@ describe("WebCL", function() {
           var queue = ctx.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
+          kernel1.setArgTypes('BUFFER', 'UINT');
+          kernel1.setArgSizes(1, 1);
           kernel1.setArgs(buffer16M, 0xdeadbeef);
+          kernel2.setArgTypes('BUFFER', 'UINT');
+          kernel2.setArgSizes(1, 1);
           kernel2.setArgs(buffer16M, 0xdeadbeef);
+          kernel1s.setArgTypes('BUFFER', 'ULONG', 'UINT');
+          kernel1s.setArgSizes(1, 1, 1);
           kernel1s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
+          kernel2s.setArgTypes('BUFFER', 'ULONG', 'UINT');
+          kernel2s.setArgSizes(1, 1, 1);
           kernel2s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
           var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
           var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
@@ -503,20 +518,24 @@ describe("WebCL", function() {
         var memProtectOff = ctx.buildKernel({ source: srcMemProtectOff });
         var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
         var WORKSIZE = 1024*1024;
-        var MAX_WORKGROUP_SIZE = 128;
+        var GROUPSIZE = Math.max(memProtectOn.workGroupSize, memProtectOff.workGroupSize);
         var bufferInput = ctx.createBuffer({ size: 16*WORKSIZE });    // sizeof(float4)=16
         var bufferOutput = ctx.createBuffer({ size: 16*WORKSIZE });
         var bufferConst = ctx.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
         var queue = ctx.createCommandQueue();
-        memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, MAX_WORKGROUP_SIZE*16);
+        memProtectOff.setArgTypes('BUFFER', 'BUFFER', 'BUFFER', 'LOCAL');
+        memProtectOff.setArgSizes(1, 1, 1, 1);
+        memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, GROUPSIZE*16);
+        memProtectOn.setArgTypes('BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'LOCAL', 'ULONG');
+        memProtectOn.setArgSizes(1, 1, 1);
         memProtectOn.setArgs(bufferInput, WORKSIZE,
                              bufferOutput, WORKSIZE,
                              bufferConst, WORKSIZE,
-                             MAX_WORKGROUP_SIZE*16, MAX_WORKGROUP_SIZE);
+                             GROUPSIZE*16, GROUPSIZE);
 
         var msUnprotected = exec(memProtectOff, WORKSIZE).msec;
         var msProtected = exec(memProtectOn, WORKSIZE).msec;
-        var slowdown = (msProtected / msUnprotected).toFixed(2);
+        var slowdown = (msProtected / (msUnprotected || 1.0)).toFixed(2);
         console.log(ctx.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
         expect(slowdown).toBeLessThan(5.0);
       }

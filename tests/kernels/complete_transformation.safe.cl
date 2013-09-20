@@ -5,8 +5,8 @@
 #define _WCL_ADDRESS_SPACE_global_ALIGNMENT (128/CHAR_BIT)
 #define _WCL_ADDRESS_SPACE_local_MIN (((128 + (CHAR_BIT - 1)) / CHAR_BIT))
 #define _WCL_ADDRESS_SPACE_local_ALIGNMENT (128/CHAR_BIT)
-#define _WCL_ADDRESS_SPACE_constant_MIN (((128 + (CHAR_BIT - 1)) / CHAR_BIT))
-#define _WCL_ADDRESS_SPACE_constant_ALIGNMENT (128/CHAR_BIT)
+#define _WCL_ADDRESS_SPACE_constant_MIN (((8 + (CHAR_BIT - 1)) / CHAR_BIT))
+#define _WCL_ADDRESS_SPACE_constant_ALIGNMENT (8/CHAR_BIT)
 typedef struct _WclStruct {
     float table[3];
 } TempStruct;
@@ -36,13 +36,13 @@ typedef struct {
     __global float4 *awesomize__input_max;
     __global float4 *awesomize__output_min;
     __global float4 *awesomize__output_max;
+    __global float4 *awesomize__factors_min;
+    __global float4 *awesomize__factors_max;
 } _WclGlobalLimits;
 
 typedef struct {
     __constant _WclConstants * _wcl_constant_allocations_min;
     __constant _WclConstants * _wcl_constant_allocations_max;
-    __constant float4 *awesomize__factors_min;
-    __constant float4 *awesomize__factors_max;
 } _WclConstantLimits;
 
 typedef struct {
@@ -116,17 +116,13 @@ typedef uint _WclInitType;
     ( \
     ( ( ((addr) >= ((type)min0)) && ((addr) <= _WCL_LAST(type, max0)) ) ? (addr) : \
         ((type)(asnull)) ) )
-#define _WCL_ADDR_global_2(type, addr, min0, max0, min1, max1, asnull) \
+#define _WCL_ADDR_global_3(type, addr, min0, max0, min1, max1, min2, max2, asnull) \
     ( \
     ( ( ((addr) >= ((type)min0)) && ((addr) <= _WCL_LAST(type, max0)) ) ? (addr) : \
         ( ( ((addr) >= ((type)min1)) && ((addr) <= _WCL_LAST(type, max1)) ) ? (addr) : \
-            ((type)(asnull)) ) ) )
+            ( ( ((addr) >= ((type)min2)) && ((addr) <= _WCL_LAST(type, max2)) ) ? (addr) : \
+                ((type)(asnull)) ) ) ) )
 #define _WCL_ADDR_local_2(type, addr, min0, max0, min1, max1, asnull) \
-    ( \
-    ( ( ((addr) >= ((type)min0)) && ((addr) <= _WCL_LAST(type, max0)) ) ? (addr) : \
-        ( ( ((addr) >= ((type)min1)) && ((addr) <= _WCL_LAST(type, max1)) ) ? (addr) : \
-            ((type)(asnull)) ) ) )
-#define _WCL_ADDR_constant_2(type, addr, min0, max0, min1, max1, asnull) \
     ( \
     ( ( ((addr) >= ((type)min0)) && ((addr) <= _WCL_LAST(type, max0)) ) ? (addr) : \
         ( ( ((addr) >= ((type)min1)) && ((addr) <= _WCL_LAST(type, max1)) ) ? (addr) : \
@@ -144,10 +140,10 @@ __constant float4 base_factor = ((float4)(1.0f,2.0f,3.0f,4.0f));
 // NOTE: Clang bug seems to get initializer rewriting wrong for vector types.
 //       after the support if fixed we can use initializations wihtout extra braces.
 // __constant float4 base_factor = (float4)(1.0f,2.0f,3.0f,4.0f);
-// __constant float base_table[] = { 1.0f,2.0f,3.0f,4.0f };
+// __constant__g float base_table[] = { 1.0f,2.0f,3.0f,4.0f };
 
 void empty_params(_WclProgramAllocations *_wcl_allocs);
-void init_scratch(_WclProgramAllocations *_wcl_allocs, size_t gid, size_t wgid, TempStruct *additional_shuffle, __global float4* input, __constant float4* factors, __local float4* scratch);
+void init_scratch(_WclProgramAllocations *_wcl_allocs, size_t gid, size_t wgid, TempStruct *additional_shuffle, __global float4* input, __global float4* factors, __local float4* scratch);
 __local float4* flip_to_awesomeness(_WclProgramAllocations *_wcl_allocs, size_t wgid, size_t wgsize, __local float4* scratch);
 
 // CHECK: empty_params(_WclProgramAllocations *_wcl_allocs)
@@ -158,8 +154,8 @@ void empty_params(_WclProgramAllocations *_wcl_allocs) {
 void init_scratch(_WclProgramAllocations *_wcl_allocs, 
     size_t gid, size_t wgid,
     TempStruct *additional_shuffle,
-    __global float4* input, __constant float4* factors, __local float4* scratch) {
-    (*(_WCL_ADDR_local_2(__local float4 *, (scratch)+(wgid), _wcl_allocs->ll._wcl_locals_min, _wcl_allocs->ll._wcl_locals_max, _wcl_allocs->ll.awesomize__scratch_min, _wcl_allocs->ll.awesomize__scratch_max, _wcl_allocs->ln))) = (*(_WCL_ADDR_global_2(__global float4 *, (input)+(gid), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gn)))*(*(_WCL_ADDR_constant_2(__constant float4 *, (factors)+(gid), _wcl_allocs->cl._wcl_constant_allocations_min, _wcl_allocs->cl._wcl_constant_allocations_max, _wcl_allocs->cl.awesomize__factors_min, _wcl_allocs->cl.awesomize__factors_max, _wcl_allocs->cn)))*(*(_WCL_ADDR_private_1(TempStruct *, (additional_shuffle), &_wcl_allocs->pa, (&_wcl_allocs->pa + 1), _wcl_allocs->pn))).table[gid%3];
+    __global float4* input, __global float4* factors, __local float4* scratch) {
+    (*(_WCL_ADDR_local_2(__local float4 *, (scratch)+(wgid), _wcl_allocs->ll._wcl_locals_min, _wcl_allocs->ll._wcl_locals_max, _wcl_allocs->ll.awesomize__scratch_min, _wcl_allocs->ll.awesomize__scratch_max, _wcl_allocs->ln))) = (*(_WCL_ADDR_global_3(__global float4 *, (input)+(gid), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, _wcl_allocs->gn)))*(*(_WCL_ADDR_global_3(__global float4 *, (factors)+(gid), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, _wcl_allocs->gn)))*(*(_WCL_ADDR_private_1(TempStruct *, (additional_shuffle), &_wcl_allocs->pa, (&_wcl_allocs->pa + 1), _wcl_allocs->pn))).table[gid%3];
 }
 
 __local float4* flip_to_awesomeness(_WclProgramAllocations *_wcl_allocs, size_t wgid, size_t wgsize, __local float4* scratch) {
@@ -176,16 +172,16 @@ __local float4* flip_to_awesomeness(_WclProgramAllocations *_wcl_allocs, size_t 
 __kernel void awesomize(
     __global float4* input, unsigned long _wcl_input_size,
     __global float4* output, unsigned long _wcl_output_size,
-    __constant float4* factors, unsigned long _wcl_factors_size,
+    __global float4* factors, unsigned long _wcl_factors_size,
     __local float4* scratch, unsigned long _wcl_scratch_size) {
 
     __local _WclLocals _wcl_locals;
     __local uint _wcl_local_null[_WCL_ADDRESS_SPACE_local_MIN];
 
     _WclProgramAllocations _wcl_allocations_allocation = {
-        { &input[0], &input[_wcl_input_size],&output[0], &output[_wcl_output_size] },
+        { &input[0], &input[_wcl_input_size],&output[0], &output[_wcl_output_size],&factors[0], &factors[_wcl_factors_size] },
         0,
-        { &(&_wcl_constant_allocations)[0], &(&_wcl_constant_allocations)[1],&factors[0], &factors[_wcl_factors_size] },
+        { &(&_wcl_constant_allocations)[0], &(&_wcl_constant_allocations)[1] },
         _wcl_constant_null,
         { &(&_wcl_locals)[0], &(&_wcl_locals)[1],&scratch[0], &scratch[_wcl_scratch_size] },
         _wcl_local_null,
@@ -194,7 +190,7 @@ __kernel void awesomize(
 
     };
     _WclProgramAllocations *_wcl_allocs = &_wcl_allocations_allocation;
-    _wcl_allocs->gn = _WCL_SET_NULL(__global uint*, _WCL_ADDRESS_SPACE_global_MIN,_wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _WCL_SET_NULL(__global uint*, _WCL_ADDRESS_SPACE_global_MIN,_wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, (__global uint*)0));
+    _wcl_allocs->gn = _WCL_SET_NULL(__global uint*, _WCL_ADDRESS_SPACE_global_MIN,_wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _WCL_SET_NULL(__global uint*, _WCL_ADDRESS_SPACE_global_MIN,_wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _WCL_SET_NULL(__global uint*, _WCL_ADDRESS_SPACE_global_MIN,_wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, (__global uint*)0)));
     if (_wcl_allocs->gn == (__global uint*)0) return; // not enough space to meet the minimum access. Would be great if we could give info about the problem for the user. 
     _wcl_allocs->pn = _WCL_SET_NULL(__private uint*, _WCL_ADDRESS_SPACE_private_MIN, &_wcl_allocs->pa, (&_wcl_allocs->pa + 1), (__private uint*)0);
     if (_wcl_allocs->pn == (__private uint*)0) return; // not enough space to meet the minimum access. Would be great if we could give info about the problem for the user. 
@@ -234,8 +230,8 @@ __kernel void awesomize(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (gid == 0) {
-        (*(_WCL_ADDR_global_2(__global float4 *, (output)+(0), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gn))) = _wcl_locals._wcl_lottery_winner + (*(_WCL_ADDR_global_2(__global float4 *, (input)+(0), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gn))).x + (*(_WCL_ADDR_private_1(float *, (_wcl_allocs->pa._wcl_private_struct.table)+(2), &_wcl_allocs->pa, (&_wcl_allocs->pa + 1), _wcl_allocs->pn)));
+        (*(_WCL_ADDR_global_3(__global float4 *, (output)+(0), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, _wcl_allocs->gn))) = _wcl_locals._wcl_lottery_winner + (*(_WCL_ADDR_global_3(__global float4 *, (input)+(0), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, _wcl_allocs->gn))).x + (*(_WCL_ADDR_private_1(float *, (_wcl_allocs->pa._wcl_private_struct.table)+(2), &_wcl_allocs->pa, (&_wcl_allocs->pa + 1), _wcl_allocs->pn)));
     } else {
-        (*(_WCL_ADDR_global_2(__global float4 *, (output)+(gid), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gn))) = ((*(_WCL_ADDR_local_2(__local float4 *, (flip_to_awesomeness(_wcl_allocs, wgid, wgsize, scratch)), _wcl_allocs->ll._wcl_locals_min, _wcl_allocs->ll._wcl_locals_max, _wcl_allocs->ll.awesomize__scratch_min, _wcl_allocs->ll.awesomize__scratch_max, _wcl_allocs->ln))))*_wcl_constant_allocations.base_factor;
+        (*(_WCL_ADDR_global_3(__global float4 *, (output)+(gid), _wcl_allocs->gl.awesomize__input_min, _wcl_allocs->gl.awesomize__input_max, _wcl_allocs->gl.awesomize__output_min, _wcl_allocs->gl.awesomize__output_max, _wcl_allocs->gl.awesomize__factors_min, _wcl_allocs->gl.awesomize__factors_max, _wcl_allocs->gn))) = ((*(_WCL_ADDR_local_2(__local float4 *, (flip_to_awesomeness(_wcl_allocs, wgid, wgsize, scratch)), _wcl_allocs->ll._wcl_locals_min, _wcl_allocs->ll._wcl_locals_max, _wcl_allocs->ll.awesomize__scratch_min, _wcl_allocs->ll.awesomize__scratch_max, _wcl_allocs->ln))))*_wcl_constant_allocations.base_factor;
     }
 }

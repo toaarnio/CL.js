@@ -396,7 +396,6 @@ var CL = (function() {
     this.peer = "Context.peer: not yet initialized";
     this.platform = null;
     this.device = null;
-    this.devices = [];
     this.queues = [];
     this.buffers = [];
     this.images = [];
@@ -731,7 +730,7 @@ var CL = (function() {
         clKernels[k].device = device;
         clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
         clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
-        clKernels[k].maxWorkGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+        clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
         clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
         clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
         //clKernels[k].argTypes = getKernelArgTypes(clKernels[k]);
@@ -747,14 +746,64 @@ var CL = (function() {
     this.peer = "Kernel.peer: not yet initialized";
     this.name = "uninitialized";
     this.numArgs = -1;
-    this.argTypes = null;
-    this.maxWorkGroupSize = -1;
+    this.argTypes = [];
+    this.argSizes = [];
+    this.workGroupSize = -1;
     this.localMemSize = -1;
     this.privateMemSize = -1;
     this.program = null;
     this.context = null;
     this.device = null;
     
+    // Sets kernel arguments using the legacy WebCL prototype API
+    //
+    this.setArgLegacy = function(index, value) {
+
+      var isNumber = (typeof(value) === 'number');
+      var isTypedArray = (value.buffer instanceof ArrayBuffer)
+      var isMemObject = (value instanceof Buffer || value instanceof Image);
+      var isNamedObject = (typeof(value) === 'string');
+
+      if (isTypedArray) {
+        self.peer.setKernelArg(index, value);
+      }
+
+      if (isNamedObject || isMemObject) {
+        var memObject = isMemObject && value;
+        memObject = memObject || self.context.getBuffer(value);
+        memObject = memObject || self.context.getImage(value);
+        value = memObject.peer;
+      }
+
+      var typemap = {
+        'BYTE' : ['number', WebCL.types.CHAR],
+        'UBYTE' : ['number', WebCL.types.UCHAR],
+        'SHORT' : ['number', WebCL.types.SHORT],
+        'USHORT' : ['number', WebCL.types.USHORT],
+        'INT' : ['number', WebCL.types.INT],
+        'UINT' : ['number', WebCL.types.UINT],
+        'LONG' : ['number', WebCL.types.LONG],
+        'ULONG' : ['number', WebCL.types.ULONG],
+        'LOCAL' : ['number', WebCL.types.UINT],
+        'IMAGE' : ['object', WebCL.types.MEMORY_OBJECT],
+        'BUFFER' : ['object', WebCL.types.MEMORY_OBJECT],
+      };
+
+      var typeName = this.argTypes[index];                 // 'UINT', 'BUFFER', ...
+      var expectedTypeOf = typemap[typeName][0];           // 'number', 'object', ...
+      var expectedTypeCL = typemap[typeName][1];           // WebCL.types.UINT, ...
+      if (typeof(value) !== expectedTypeOf) {
+        throw "Invalid kernel argument type: Expected " + typeName + ", received " + value;
+      }
+      if (typeName === 'LOCAL') {
+        this.peer.setKernelArgLocal(index, value);
+      } else {
+        this.peer.setKernelArg(index, value, expectedTypeCL);
+      }
+    };
+
+    // Sets kernel arguments using the legacy WebCL prototype API
+    //
     this.setArg = function(index, value) {
       var isArray = (value instanceof Array);
       var isNumber = (typeof value === 'number');
@@ -799,9 +848,127 @@ var CL = (function() {
       }
     };
 
+    // Sets kernel arguments using the WebCL Working Draft way
+    //
+    this.setArgDevel = function(index, value) {
+      var isNumber = (typeof value === 'number');
+      var isFloat = isNumber && (Math.floor(value) !== value);
+      var isInt = isNumber && !isFloat;
+      var isNamedObject = (typeof value === 'string');
+      var isMemObject = (value instanceof Buffer || value instanceof Image);
+      var isArray = (value instanceof Array);
+
+      var isTypedArray = value.buffer && (value.buffer instanceof ArrayBuffer);
+      var is8bit = isTypedArray && (value.BYTES_PER_ELEMENT === 1);
+      var is16bit = isTypedArray && (value.BYTES_PER_ELEMENT === 2);
+      var is32bit = isTypedArray && (value.BYTES_PER_ELEMENT === 4);
+      var isFloat32 = is32bit && (value instanceof Float32Array);
+      var isInteger = !isFloat32;
+      
+      var buffer = new ArrayBuffer(8*16);          // enough space for a double16
+
+      // CASE 1: Single scalar
+      //
+      if (isNumber) {
+        var byteView = new Int8Array(buffer, 0, 1);
+        var ubyteView = new Uint8Array(buffer, 0, 1);
+        var shortView = new Int16Array(buffer, 0, 1);
+        var ushortView = new Uint16Array(buffer, 0, 1);
+        var intView = new Int32Array(buffer, 0, 1);
+        var uintView = new Uint32Array(buffer, 0, 1);
+        var longView = new Uint32Array(buffer, 0, 2);
+        var ulongView = new Uint32Array(buffer, 0, 2);
+        var floatView = new Float32Array(buffer, 0, 1);
+        var doubleView = new Float64Array(buffer, 0, 1);
+        var typemap = {
+          'BYTE' : byteView,
+          'UBYTE' : ubyteView,
+          'SHORT' : shortView,
+          'USHORT' : ushortView,
+          'INT' : intView,
+          'UINT' : uintView,
+          'LONG' : longView,
+          'ULONG' : ulongView,
+          'LOCAL' : uintView,
+          'IMAGE' : null,
+          'BUFFER' : null,
+        };
+        var expectedType = this.argTypes[index];
+        console.log("Expected type: ", expectedType);
+        var view = typemap[expectedType];
+        if (view) {
+          if (expectedType == 'LOCAL') {
+            self.peer.setKernelArgLocal(index, value);
+            return;
+          }
+          if (expectedType == 'ULONG') {
+            view[0] = value >> 32;
+            view[1] = value & 0xffffffff;
+            //self.peer.setkernelArg(index, view);
+            self.peer.setKernelArg(index, value, WebCL.types.ULONG);
+            return;
+          } else {
+            view[0] = value;
+            self.setArg(index, value);
+            //self.peer.setKernelArg(index, view);
+            return;
+          }
+        } else {
+          throw "Invalid kernel argument type: Expected " + expectedType;
+        }
+      }
+
+      // CASE 2: Typed Array (not yet supported)
+      //
+      if (isTypedArray) {
+        var expectedType = this.argTypes[index];
+        var typemap = {
+          'BYTE' : Int8Array,
+          'UBYTE' : Uint8Array,
+          'SHORT' : Int16Array,
+          'USHORT' : Uint16Array,
+          'INT' : Int32Array,
+          'UINT' : Uint32Array,
+          'LONG' : null,
+          'ULONG' : null,
+          'LOCAL' : Uint32Array,
+          'IMAGE' : null,
+          'BUFFER' : null,
+        };
+        var expectedType = typemap[this.argTypes[index]];
+        var expectedSize = this.argSizes[index];
+        var isExpectedType = value instanceof expectedType;
+        var isExpectedSize = (value.length === expectedSize);
+        if (isExpectedType && isExpectedSize) {
+          self.peer.setKernelArg(index, value);
+        } else {
+          throw "Invalid kernel argument: Expected " + expectedSize + " " + expectedType + " elements";
+        }
+      }
+
+      // CASE 2: WebCLBuffer or WebCLImage
+      //
+      if (isMemObject || isNamedObject) {
+        this.setArg(index, value);
+      }
+    };
+
     this.setArgs = function() {
       for (var i=0; i < arguments.length; i++) {
-        self.setArg(i, arguments[i]);
+        self.setArgLegacy(i, arguments[i]);
+      }
+    };
+
+    this.setArgTypes = function() {
+      for (var i=0; i < arguments.length; i++) {
+        self.argTypes[i] = arguments[i];
+      }
+      console.log(this.argTypes);
+    };
+
+    this.setArgSizes = function() {
+      for (var i=0; i < arguments.length; i++) {
+        self.argSizes[i] = arguments[i];
       }
     };
 
@@ -938,11 +1105,16 @@ var CL = (function() {
           return theObject[privateFunc].apply(theObject, arguments);
         } catch (e) {
           if (self.DEBUG) {
+            var device = theObject.device || theObject.context.device;
+            var version = device && device.version;
+            var vendor = device && device.vendor;
+            var name = device && device.name;
             console.log("WebCLException trapped by CL.js:");
             console.log("  "+className+"."+publicFunc, theObject[privateFunc]);
             console.log("  arguments: ", arguments);
             console.log("  object: ", theObject);
-            console.log("  ", e);
+            console.log("  device: ", vendor, version, name);
+            console.log("  message: ", e);
           }
           if (self.CLEANUP) {
             theObject.releaseAll();
