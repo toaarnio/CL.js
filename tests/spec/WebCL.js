@@ -384,13 +384,18 @@ describe("WebCL", function() {
     
     describe("Random Number Benchmark", function() {
 
-      it("should be 100x faster than JavaScript", function() {
+      it("should be 1000x faster than JavaScript (handwritten asm.js)", function() {
         var BUFFERSIZE = 16*1024*1024;
         var WORKSIZE = BUFFERSIZE / 4;
         var JS_HANDICAP = 256;
         var srcMemProtectOn = cl.loadSource('kernels/rng2.safe.cl');
-        var dstBuffer = new Uint8Array(BUFFERSIZE/JS_HANDICAP);
-        var msJavaScript = rng(dstBuffer, WORKSIZE/JS_HANDICAP, 0xdeadbeef, 5) * JS_HANDICAP;
+        var HEAP = new ArrayBuffer(BUFFERSIZE/JS_HANDICAP);
+        var rng = RNGModule(window, null, HEAP);
+        var t1 = Date.now();
+        rng(HEAP.byteLength, 0xdeadbeef, 5);
+        var msJavaScript = (Date.now() - t1) * JS_HANDICAP;
+        var heapView = new Uint8Array(HEAP);
+        console.log("HEAP[t1 % HEAP.length]", heapView[t1 % heapView.length]);
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
           var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
@@ -402,39 +407,55 @@ describe("WebCL", function() {
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msJavaScript / msProtected).toFixed(2);
           console.log(ctx.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
-          expect(slowdown).toBeGreaterThan(100.0);
+          expect(slowdown).toBeGreaterThan(1000.0);
         }
 
-        function rng(dst, worksize, seed, iter) {
-          var t1 = Date.now();
-          var delta = 0x9E3779B9;
+        function RNGModule(stdlib, foreign, heap) {
+          "use asm"
+
+          var ITER = 15;
           var k0 = 0xA341316C;
           var k1 = 0xC8013EA4;
           var k2 = 0xAD90777D;
           var k3 = 0x7E95761E;
-          var ITER = 15;
-          for (var k=0; k < (iter || 1); k++) {
-            for (var i=0; i < worksize; i++) {
-              var x = seed;
-              var y = seed << 3;
-              x += i + (i << 11) + (i << 19);
-              y += i + (i << 9) + (i << 21);
-              var sum = 0;
-              for (var j=0; j < ITER; j++) {
-                sum += delta;
-                x += ((y << 4) + k0) & (y + sum) & ((y >> 5) + k1);
-                y += ((x << 4) + k2) & (x + sum) & ((x >> 5) + k3);
+          var delta = 0x9E3779B9;
+          var dst = new stdlib.Uint8Array(heap);
+          var i=0, j=0, k=0, x=0, y=0, r=0, g=0, sum=0, idx=0;
+
+          function rng(worksize, seed, iter) {
+            worksize = worksize|0;
+            seed = seed|0;
+            iter = iter|0;
+            ITER = ITER|0;
+            k0 = k0|0;
+            k1 = k1|0
+            k2 = k2|0
+            k3 = k3|0
+            delta = delta|0;
+            for (k=0; (k|0) < (iter|0); k = (k+1)|0) {
+              for (i=0; (i|0) < (worksize|0); i = (i+1)|0) {
+                x = seed;
+                y = x << 3;
+                x = x|0 + (i + (i << 11) + (i << 19));
+                y = y|0 + (i + (i << 9) + (i << 21));
+                sum = 0;
+                for (j=0; (j|0) < (ITER|0); j = (j+1)|0) {
+                  sum = (sum + delta)|0;
+                  x = x|0 + ((y << 4) + k0) & (y + sum) & ((y >>> 5) + k1);
+                  y = y|0 + ((x << 4) + k2) & (x + sum) & ((x >>> 5) + k3);
+                }
+                r = (x & 0x00ff);
+                g = (x & 0xff00) >>> 8;
+                idx = (i << 2)|0;
+                dst[idx      ] = r;
+                dst[idx + 1|0] = r;
+                dst[idx + 2|0] = r;
+                dst[idx + 3|0] = g;
               }
-              var r = x & 0xff;
-              var g = (x & 0xff00) >> 8;
-              dst[i*4    ] = r;
-              dst[i*4 + 1] = r;
-              dst[i*4 + 2] = r;
-              dst[i*4 + 3] = g;
             }
-          }
-          var elapsed = Date.now() - t1;
-          return elapsed;
+          };
+
+          return rng;
         }
       });
 
