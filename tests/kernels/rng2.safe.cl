@@ -1,4 +1,35 @@
 // WebCL Validator: validation stage.
+
+/* WebCL Validator JSON header
+{
+    "version" : "1.0",
+    "kernels" :
+        {
+            "clRandom1D" :
+                {
+                    "dst" :
+                        {
+                            "index" : 0,
+                            "host-type" : "cl_mem",
+                            "host-element-type" : "cl_uchar4",
+                            "address-space" : "global",
+                            "size-parameter" : "_wcl_dst_size"
+                        },
+                    "_wcl_dst_size" :
+                        {
+                            "index" : 1,
+                            "host-type" : "cl_ulong"
+                        },
+                    "seed" :
+                        {
+                            "index" : 2,
+                            "host-type" : "cl_uint"
+                        }
+                }
+        }
+}
+*/
+
 #define _WCL_ADDRESS_SPACE_private_MIN (((8 + (CHAR_BIT - 1)) / CHAR_BIT))
 #define _WCL_ADDRESS_SPACE_private_ALIGNMENT (8/CHAR_BIT)
 #define _WCL_ADDRESS_SPACE_global_MIN (((32 + (CHAR_BIT - 1)) / CHAR_BIT))
