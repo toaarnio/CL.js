@@ -96,10 +96,12 @@ var CL = (function() {
   // Loads a kernel source code file from the given `uri` via http
   // GET, with a random query string appended to the uri to avoid
   // obsolete copies getting served from some proxy or cache. Uses
-  // async XHR if a `callback` function is given.
+  // async XHR if a `callback` function is given.  The given `uri`
+  // must have the suffix `.cl`.
   //
   CL.loadSource = function(uri, callback) {
-    return xhrLoad(uri, callback);
+    var validURI = (typeof(uri) === 'string') && uri.endsWith('.cl');
+    return validURI ? xhrLoad(uri, callback) : null;
   };
 
   // ### CL.enumToString() ###
@@ -142,7 +144,7 @@ var CL = (function() {
 
   var API = {};
 
-  // ### cl.INSTANCE ###
+  // ### INSTANCE ###
   //
   // The ID of the current CL instance, initialized by `new CL()`.
   // This can be used for debugging purposes to uniquely identify
@@ -150,26 +152,26 @@ var CL = (function() {
   //
   API.INSTANCE = 0;
 
-  // ### cl.platforms ###
+  // ### platforms ###
   //
   // Contains all WebCL Platforms that are available in this system,
-  // as discovered by `CL.setup()`.  Each Platform typically contains
+  // as discovered at construction.  Each Platform typically contains
   // one or more Devices, but it can also happen that all devices on a
   // particular platform are powered down or otherwise not available.
   //
   API.platforms = [];
 
-  // ### cl.devices ###
+  // ### devices ###
   //
   // Contains all WebCL Devices that are actually available in this
-  // system, as discovered by `CL.setup()`.  Each Device belongs to
+  // system, as discovered at construction.  Each Device belongs to
   // exactly one Platform. Devices that are powered down or otherwise
   // not available are not included. Applications should be prepared
   // for the possibility that there are no devices available at all.
   //
   API.devices = [];
 
-  // ### cl.createContext() ###
+  // ### createContext() ###
   // 
   // Creates a new Context for the given `device` and assigns the
   // given `name` to the newly created context:
@@ -196,11 +198,11 @@ var CL = (function() {
     return ctx;
   };
 
-  // ### cl.getContext() ###
+  // ### getContext() ###
   // 
-  // Retrieves the Context by the given plain-text `name`, or null
-  // if no context by that name exists for any Device.  See
-  // `CL.createContext` for how to assign a name to a context.
+  // Retrieves the Context by the given plain-text `name`, or null if
+  // no context by that name exists for any Device.  See
+  // `createContext` for how to assign a name to a context.
   //
   API.getContext = function(name) {
     for (var d=0; d < this.devices.length; d++) {
@@ -212,7 +214,7 @@ var CL = (function() {
     return null;
   };
 
-  // ### cl.releaseAll() ###
+  // ### releaseAll() ###
   // 
   API.releaseAll = function() {
     for (var d=0; d < this.devices.length; d++) {
@@ -238,7 +240,10 @@ var CL = (function() {
     IMP.CLEANUP = !(parameters.cleanup === false);
     IMP.PROFILE = !(parameters.profile === false);
 
-    // Populate the new CL instance with instance variables and methods
+    // Populate the new CL instance with instance variables and
+    // methods.  Global CL properties are duplicated into the new
+    // instance for convenience.
+    // 
 
     API.INSTANCE++;
     var cloneAPI = {};
@@ -249,7 +254,7 @@ var CL = (function() {
       cloneAPI[p] = API[p];
     }
 
-    if (window.WebCL) {
+    if (window.webCL) {
       cloneAPI.platforms.length = 0;
       cloneAPI.devices.length = 0;
       cloneAPI.platforms = platformFactory();
@@ -270,16 +275,17 @@ var CL = (function() {
   };
 
   function addEnums(theObject) {
-    for (var legacyEnumName in WebCL) {
-      if (typeof WebCL[legacyEnumName] === 'number') {
-        var newEnumName = legacyEnumName.slice(3);
-        theObject[newEnumName] = WebCL[legacyEnumName];
+    for (var enumName in WebCL) {
+      if (typeof WebCL[enumName] === 'number') {
+        if (enumName.indexOf("CL_") !== 0) {
+          theObject[enumName] = WebCL[enumName];
+        }
       }
     }
   };
 
   function xhrLoad(uri, callback) {
-    var useAsync = (typeof callback === 'function');
+    var useAsync = (typeof(callback) === 'function');
     var xhr = new XMLHttpRequest();
     if (useAsync) {
       xhr.onreadystatechange = function() {
@@ -292,7 +298,7 @@ var CL = (function() {
     try {
       xhr.open("GET", uri + "?id="+ Math.random(), useAsync);
       xhr.send(null);
-      return useAsync || xhr.responseText;
+      return useAsync || (xhr.readyState === 4 && xhr.status === 200 && xhr.responseText);
     } catch (e) {
       return null;
     }
@@ -450,9 +456,21 @@ var CL = (function() {
     };
 
     this.buildProgram = function(parameters) {
-      parameters = parameters || {};
-      var program = new Program(parameters);
-      parameters.context = self;
+      var program = new Program();
+      switch (typeof(parameters)) {
+      case 'object':
+        program.uri = parameters.uri;
+        program.source = parameters.source || CL.loadSource(program.uri);
+        program.ptx = parameters.ptx;
+        break;
+      case 'string':
+        program.uri = parameters.endsWith(".cl") ? parameters : null;
+        program.source = CL.loadSource(program.uri) || parameters;
+        break;
+      default:
+        throw "CL.Context.buildProgram: Expected String or Object";
+      }
+      program.context = self;
       program.build(parameters);
       self.programs.push(program);
       return program;
@@ -634,7 +652,6 @@ var CL = (function() {
 
     this.build = function(parameters) {
       parameters = parameters || {};
-      self.context = parameters.context;
       self.compilerOpts = parameters.opts || "";
       self.compilerDefs = "";
       for (var d in parameters.defines) {
@@ -649,7 +666,7 @@ var CL = (function() {
           }
           self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
           if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
-            self.kernels = kernelFactory(self);
+            self.kernels = kernelFactory();
             if (self.kernels.length > 0) {
               self.kernel = self.kernels[0];
               self.built = true;
@@ -703,29 +720,19 @@ var CL = (function() {
     IMP.addCleanupWrapper(this, "build", "Program");
     IMP.addCleanupWrapper(this, "getBuildStatus", "Program");
     IMP.addCleanupWrapper(this, "getBuildLog", "Program");
-    IMP.addCleanupWrapper(this, "getKernel", "Program");
 
     function init(parameters) {
-      parameters = parameters || {};
-      if (parameters.uri) {
-        self.uri = parameters.uri;
-        self.source = CL.loadSource(parameters.uri);
-      } else if (parameters.source) {
-        self.source = parameters.source;
-      } else if (parameters.ptx) {
-        self.ptx = parameters.ptx;
-      }
     };
 
-    function kernelFactory(program) {
+    function kernelFactory() {
       var clKernels = [];
-      var context = program.context;
-      var device = program.context.device;
-      var kernels = program.peer.createKernelsInProgram();
+      var context = self.context;
+      var device = self.context.device;
+      var kernels = self.peer.createKernelsInProgram();
       for (var k=0; k < kernels.length; k++) {
         clKernels[k] = new Kernel();
         clKernels[k].peer = kernels[k];
-        clKernels[k].program = program;
+        clKernels[k].program = self;
         clKernels[k].context = context;
         clKernels[k].device = device;
         clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
@@ -733,7 +740,6 @@ var CL = (function() {
         clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
         clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
         clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
-        //clKernels[k].argTypes = getKernelArgTypes(clKernels[k]);
       }
       return clKernels;
     };
@@ -963,7 +969,6 @@ var CL = (function() {
       for (var i=0; i < arguments.length; i++) {
         self.argTypes[i] = arguments[i];
       }
-      console.log(this.argTypes);
     };
 
     this.setArgSizes = function() {

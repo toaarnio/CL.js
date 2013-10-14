@@ -26,9 +26,12 @@ jasmine.Env.prototype.failFast = function() {
   });
 };
 
-//jasmine.getEnv().failFast();
+// Uncomment the following line to enable the "fail fast" mode.
+// jasmine.getEnv().failFast();
 
 describe("WebCL", function() {
+
+  var SELECTED_DEVICE = 0;
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -48,37 +51,33 @@ describe("WebCL", function() {
 
     it("must have error code enums ranging from 0 to -64", function() {
       for (var enumName in errorEnums) {
-        var legacyEnumName = "CL_" + enumName;
         var expectedEnumValue = errorEnums[enumName];
-        var actualEnumValue = WebCL[legacyEnumName];
-        expect(legacyEnumName).toExist();
-        expect(legacyEnumName).toHaveType('number');
-        expect(legacyEnumName).toHaveValue(expectedEnumValue);
+        var actualEnumValue = WebCL[enumName];
+        expect(enumName).toExist();
+        expect(enumName).toHaveType('number');
+        expect(enumName).toHaveValue(expectedEnumValue);
       }
     });
 
     xit("must not have error code enums that have been removed", function() {
       for (var enumName in removedErrorEnums) {
-        var legacyEnumName = "CL_" + enumName;
-        expect(legacyEnumName).not.toExist();
+        expect(enumName).not.toExist();
       }
     });
 
     it("must have device info enums ranging from 0x1000 to 0x103D", function() {
       for (var enumName in deviceInfoEnums) {
-        var legacyEnumName = "CL_" + enumName;
         var expectedEnumValue = deviceInfoEnums[enumName];
-        var actualEnumValue = WebCL[legacyEnumName];
-        expect(legacyEnumName).toExist();
-        expect(legacyEnumName).toHaveType('number');
-        expect(legacyEnumName).toHaveValue(expectedEnumValue);
+        var actualEnumValue = WebCL[enumName];
+        expect(enumName).toExist();
+        expect(enumName).toHaveType('number');
+        expect(enumName).toHaveValue(expectedEnumValue);
       }
     });
 
     xit("must not have device info enums that have been removed", function() {
       for (var enumName in removedDeviceInfoEnums) {
-        var legacyEnumName = "CL_" + enumName;
-        expect(legacyEnumName).not.toExist();
+        expect(enumName).not.toExist();
       }
     });
 
@@ -111,8 +110,8 @@ describe("WebCL", function() {
   describe("CL.js", function() {
     
     it("must be able to create and retrieve Contexts", function() {
-      var cl1 = new CL({ debug: true, cleanup: true });
-      var cl2 = new CL({ debug: true, cleanup: true });
+      var cl1 = new CL({ debug: false, cleanup: false });
+      var cl2 = new CL({ debug: false, cleanup: false });
 
       var ctx1 = cl1.createContext({ name: 'foo' });
       var ctx2 = cl1.getContext('foo');
@@ -124,21 +123,71 @@ describe("WebCL", function() {
 
       expect(cl1.getContext('foo')).not.toBeNull();
       expect(cl2.getContext('foo')).toBeNull();
-
-      
+      CL.releaseAll();
     });
 
     it("must throw an exception on invalid input", function() {
-      var cl = new CL({ debug: true, cleanup: true });
-      var func = function() {
-        cl.createContext({ device: 'invalidDevice' });
+      var cl = new CL({ debug: false, cleanup: false });
+      var uri = 'kernels/rng.cl';
+      var src = cl.loadSource(uri);
+      var ctx = cl.createContext();
+      expect(function() { cl.createContext({ device: 'foo' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ source: src, opts: '--invalid-option' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ source: 'foo' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ source: null }) }).toThrow();
+      expect(function() { ctx.buildKernel({ uri: 'foo.cl' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ uri: null }) }).toThrow();
+      expect(function() { ctx.buildKernel('foo.cl') }).toThrow();
+      expect(function() { ctx.buildKernel('foo') }).toThrow();
+      expect(function() { ctx.buildKernel(null) }).toThrow();
+      expect(function() { ctx.buildKernel(0xdeadbeef) }).toThrow();
+      expect(function() { ctx.buildKernel({}) }).toThrow();
+      expect(function() { ctx.buildKernel() }).toThrow();
+      CL.releaseAll();
+    });
+
+    it("must be able to build kernels from URI or source", function() {
+      var cl = new CL({ debug: false, cleanup: false });
+      var ctx = cl.createContext();
+      var testFunc = function() {
+        var uri = 'kernels/rng.cl';
+        var src = cl.loadSource(uri);
+        var prog1 = ctx.buildProgram({ source: src });
+        var kernel1 = ctx.buildKernel({ source: src });
+        var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
+        var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
+        var kernel3 = ctx.buildKernel(src);
+        var kernel4 = ctx.buildKernel(uri);
+        var kernel5 = ctx.buildKernels(uri)[0];
+        expect(prog1.peer instanceof WebCLProgram).toBeTruthy();
+        expect(kernel1.peer instanceof WebCLKernel).toBeTruthy();
+        expect(kernel2.peer instanceof WebCLKernel).toBeTruthy();
+        expect(kernel3.peer instanceof WebCLKernel).toBeTruthy();
+        expect(kernel4.peer instanceof WebCLKernel).toBeTruthy();
+        expect(kernel5.peer instanceof WebCLKernel).toBeTruthy();
       } 
-      expect(func).toThrow();
-      cl.releaseAll();
+      expect(testFunc).not.toThrow();
+      CL.releaseAll();
+    });
+
+    it("should be able to build kernels from PTX source on NVIDIA GPUs", function() {
+      var cl = new CL({ debug: false, cleanup: false });
+      var ctx = cl.createContext();
+      var testFunc = function() {
+        if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
+          var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
+          var src = cl.loadSource(uri);
+          var prog1 = ctx.buildProgram({ ptx: src });
+          var kernel1 = ctx.buildKernel({ ptx: src });
+          expect(prog1.peer instanceof WebCLProgram).toBeTruthy();
+          expect(kernel1.peer instanceof WebCLKernel).toBeTruthy();
+        }
+      }
+      expect(testFunc).not.toThrow();
+      CL.releaseAll();
     });
 
   });
-
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -236,7 +285,7 @@ describe("WebCL", function() {
       }
     });
 
-    it("must be able to release all CL resources allocated by previous tests", function() {
+    it("must be able to release all CL resources allocated by this module", function() {
       cl.releaseAll();
       expect(cl.devices[0].contexts.length).toEqual(0);
     });
@@ -334,7 +383,7 @@ describe("WebCL", function() {
         }
       });
 
-      it("must be able to release all CL resources allocated by previous tests", function() {
+      it("must be able to release all CL resources allocated by this module", function() {
         cl.releaseAll();
         expect(cl.devices[0].contexts.length).toEqual(0);
       });
@@ -345,9 +394,45 @@ describe("WebCL", function() {
   //
   //
   // 
-  describe("OOB memory protection", function() {
+  describe("Performance", function() {
 
-    var cl = null;
+    var CTX = null;
+    var cl = new CL({ debug: false, cleanup: false });
+
+    beforeEach(function() {
+      for (var d=0; d < cl.devices.length; d++) {
+        cl.createContext({ device: cl.devices[d] });
+      }
+      CTX = cl.devices[SELECTED_DEVICE].contexts[0];
+    });
+
+    afterEach(function() {
+      cl.releaseAll();
+    });
+
+    function calibrate(kernel, worksize) {
+      var iter = 1;
+      var msec = exec(kernel, worksize, iter).msec;
+      while (msec < 50) {
+        iter *= 2;
+        msec = exec(kernel, worksize, iter).msec;
+      }
+      return iter;
+    };
+
+    function validate(kernel1, kernel2, worksize) {
+      var res1 = new Float32Array(worksize);
+      var res2 = new Float32Array(worksize);
+      var queue = kernel1.context.queues[0];
+      exec(kernel1, worksize, 1);
+      queue.enqueueReadBuffer('buffer16M', res1);
+      exec(kernel2, worksize, 1);
+      queue.enqueueReadBuffer('buffer16M', res2);
+      for (var i=0, diff=0; i < worksize; i++) {
+        diff += Math.abs(res2[i] - res1[i]);
+      }
+      return diff / worksize;
+    };
 
     function exec(kernel, worksize, iter) {
       var success = false;
@@ -371,151 +456,183 @@ describe("WebCL", function() {
       return stats;
     };
 
-    beforeEach(function() {
-      cl = new CL({ debug: true, cleanup: false });
-      for (var d=0; d < cl.devices.length; d++) {
-        cl.createContext({ device: cl.devices[d] });
-      }
-    });
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    //
+    // 
+    describe("Math built-ins", function() {
+      
+      var BUFFERSIZE = 16*1024*1024;
 
-    afterEach(function() {
-      cl.releaseAll();
+      beforeEach(function() {
+        CTX.createBuffer({ size: BUFFERSIZE, name: 'buffer16M' });
+        CTX.buildKernels('kernels/builtin-math.cl');
+        CTX.createCommandQueue();
+      });
+
+      afterEach(function() {
+        CL.releaseAll();
+      });
+      
+      it("hypot() should be faster than a custom implementation", function() {
+        var faster = CTX.getKernel('hypotBuiltin');
+        var slower = CTX.getKernel('hypotCustom');
+        faster.setArgTypes('BUFFER');
+        faster.setArgs('buffer16M');
+        slower.setArgTypes('BUFFER');
+        slower.setArgs('buffer16M');
+        var SAD = validate(faster, slower, BUFFERSIZE/4);
+        expect(SAD).toBeCloseTo(0, 2);
+        var iter = calibrate(faster, BUFFERSIZE/4);
+        var msecFaster = exec(faster, BUFFERSIZE/4, iter).msec;
+        var msecSlower = exec(slower, BUFFERSIZE/4, iter).msec;
+        console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
+        expect(msecFaster).toBeLessThan(msecSlower);
+      });
+
+      it("sincos() should be faster than sin() + cos()", function() {
+        var faster = CTX.getKernel('sinCosCombined');
+        var slower = CTX.getKernel('sinCosSeparate');
+        faster.setArgTypes('BUFFER');
+        faster.setArgs('buffer16M');
+        slower.setArgTypes('BUFFER');
+        slower.setArgs('buffer16M');
+        var SAD = validate(faster, slower, BUFFERSIZE/4);
+        expect(SAD).toBeCloseTo(0, 5);
+        var iter = calibrate(faster, BUFFERSIZE/4);
+        var msecFaster = exec(faster, BUFFERSIZE/4, iter).msec;
+        var msecSlower = exec(slower, BUFFERSIZE/4, iter).msec;
+        console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
+        expect(msecFaster).toBeLessThan(msecSlower);
+      });
     });
     
-    describe("Random Number Benchmark", function() {
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    //
+    // 
+    describe("OOB memory protection", function() {
 
-      it("should be 1000x faster than JavaScript (handwritten asm.js)", function() {
-        var BUFFERSIZE = 16*1024*1024;
-        var WORKSIZE = BUFFERSIZE / 4;
-        var JS_HANDICAP = 256;
-        var srcMemProtectOn = cl.loadSource('kernels/rng2.safe.cl');
-        var HEAP = new ArrayBuffer(BUFFERSIZE/JS_HANDICAP);
-        var rng = RNGModule(window, null, HEAP);
-        var t1 = Date.now();
-        rng(HEAP.byteLength, 0xdeadbeef, 5);
-        var msJavaScript = (Date.now() - t1) * JS_HANDICAP;
-        var heapView = new Uint8Array(HEAP);
-        console.log("HEAP[t1 % HEAP.length]", heapView[t1 % heapView.length]);
-        for (var d=0; d < cl.devices.length; d++) {
-          var ctx = cl.devices[d].contexts[0];
-          var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
-          var buffer16M = ctx.createBuffer({ size: BUFFERSIZE });
-          var queue = ctx.createCommandQueue();
+      describe("Random Number Benchmark", function() {
+
+        it("should be 1000x faster than JavaScript (handwritten asm.js)", function() {
+          var BUFFERSIZE = 16*1024*1024;
+          var WORKSIZE = BUFFERSIZE / 4;
+          var JS_HANDICAP = 256;
+          var HEAP = new ArrayBuffer(BUFFERSIZE/JS_HANDICAP);
+          var rng = RNGModule(window, null, HEAP);
+          var t1 = Date.now();
+          rng(HEAP.byteLength, 0xdeadbeef, 5);
+          var msJavaScript = (Date.now() - t1) * JS_HANDICAP;
+          var heapView = new Uint8Array(HEAP);
+          console.log("HEAP[t1 % HEAP.length]", heapView[t1 % heapView.length]);
+
+          var srcMemProtectOn = cl.loadSource('kernels/rng2.safe.cl');
+          var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
+          var buffer16M = CTX.createBuffer({ size: BUFFERSIZE });
+          var queue = CTX.createCommandQueue();
           memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          memProtectOn.setArgSizes(1, 1, 1);
           memProtectOn.setArgs(buffer16M, WORKSIZE, 0xdeadbeef);
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msJavaScript / msProtected).toFixed(2);
-          console.log(ctx.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
+          console.log(CTX.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
           expect(slowdown).toBeGreaterThan(1000.0);
-        }
 
-        function RNGModule(stdlib, foreign, heap) {
-          "use asm"
+          function RNGModule(stdlib, foreign, heap) {
+            "use asm"
 
-          var ITER = 15;
-          var k0 = 0xA341316C;
-          var k1 = 0xC8013EA4;
-          var k2 = 0xAD90777D;
-          var k3 = 0x7E95761E;
-          var delta = 0x9E3779B9;
-          var dst = new stdlib.Uint8Array(heap);
-          var i=0, j=0, k=0, x=0, y=0, r=0, g=0, sum=0, idx=0;
+            var ITER = 15;
+            var k0 = 0xA341316C;
+            var k1 = 0xC8013EA4;
+            var k2 = 0xAD90777D;
+            var k3 = 0x7E95761E;
+            var delta = 0x9E3779B9;
+            var dst = new stdlib.Uint8Array(heap);
+            var i=0, j=0, k=0, x=0, y=0, r=0, g=0, sum=0, idx=0;
 
-          function rng(worksize, seed, iter) {
-            worksize = worksize|0;
-            seed = seed|0;
-            iter = iter|0;
-            ITER = ITER|0;
-            k0 = k0|0;
-            k1 = k1|0
-            k2 = k2|0
-            k3 = k3|0
-            delta = delta|0;
-            for (k=0; (k|0) < (iter|0); k = (k+1)|0) {
-              for (i=0; (i|0) < (worksize|0); i = (i+1)|0) {
-                x = seed;
-                y = x << 3;
-                x = x|0 + (i + (i << 11) + (i << 19));
-                y = y|0 + (i + (i << 9) + (i << 21));
-                sum = 0;
-                for (j=0; (j|0) < (ITER|0); j = (j+1)|0) {
-                  sum = (sum + delta)|0;
-                  x = x|0 + ((y << 4) + k0) & (y + sum) & ((y >>> 5) + k1);
-                  y = y|0 + ((x << 4) + k2) & (x + sum) & ((x >>> 5) + k3);
+            function rng(worksize, seed, iter) {
+              worksize = worksize|0;
+              seed = seed|0;
+              iter = iter|0;
+              ITER = ITER|0;
+              k0 = k0|0;
+              k1 = k1|0
+              k2 = k2|0
+              k3 = k3|0
+              delta = delta|0;
+              for (k=0; (k|0) < (iter|0); k = (k+1)|0) {
+                for (i=0; (i|0) < (worksize|0); i = (i+1)|0) {
+                  x = seed;
+                  y = x << 3;
+                  x = x|0 + (i + (i << 11) + (i << 19));
+                  y = y|0 + (i + (i << 9) + (i << 21));
+                  sum = 0;
+                  for (j=0; (j|0) < (ITER|0); j = (j+1)|0) {
+                    sum = (sum + delta)|0;
+                    x = x|0 + ((y << 4) + k0) & (y + sum) & ((y >>> 5) + k1);
+                    y = y|0 + ((x << 4) + k2) & (x + sum) & ((x >>> 5) + k3);
+                  }
+                  r = (x & 0x00ff);
+                  g = (x & 0xff00) >>> 8;
+                  idx = (i << 2)|0;
+                  dst[idx      ] = r;
+                  dst[idx + 1|0] = r;
+                  dst[idx + 2|0] = r;
+                  dst[idx + 3|0] = g;
                 }
-                r = (x & 0x00ff);
-                g = (x & 0xff00) >>> 8;
-                idx = (i << 2)|0;
-                dst[idx      ] = r;
-                dst[idx + 1|0] = r;
-                dst[idx + 2|0] = r;
-                dst[idx + 3|0] = g;
               }
-            }
-          };
+            };
 
-          return rng;
-        }
-      });
+            return rng;
+          }
+        });
 
-      it("should have less than 5x protection overhead", function() {
-        var srcMemProtectOff = cl.loadSource('kernels/rng2.cl');
-        var srcMemProtectOn = cl.loadSource('kernels/rng2.safe.cl');
-        for (var d=0; d < cl.devices.length; d++) {
-          var ctx = cl.devices[d].contexts[0];
-          var memProtectOff = ctx.buildKernel({ source: srcMemProtectOff });
-          var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
-          var buffer16M = ctx.createBuffer({ size: 16*1024*1024 });
-          var queue = ctx.createCommandQueue();
+        it("should have less than 5x protection overhead", function() {
+          var srcMemProtectOff = cl.loadSource('kernels/rng2.cl');
+          var srcMemProtectOn = cl.loadSource('kernels/rng2.safe.cl');
+          var memProtectOff = CTX.buildKernel({ source: srcMemProtectOff });
+          var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
+          var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
+          var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
           memProtectOff.setArgTypes('BUFFER', 'UINT');
-          memProtectOff.setArgSizes(1, 1);
           memProtectOff.setArgs(buffer16M, 0xdeadbeef);
           memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          memProtectOn.setArgSizes(1, 1, 1);
           memProtectOn.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
           var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msProtected / msUnprotected).toFixed(2);
-          console.log(ctx.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
+          console.log(CTX.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
           expect(slowdown).toBeLessThan(5.0);
-        }
-      });
+        });
 
-      it("should be faster using uint4 than uint[4]", function() {
-        var src1 = cl.loadSource('kernels/rng.cl');
-        var src2 = cl.loadSource('kernels/rng2.cl');
-        var src1s = cl.loadSource('kernels/rng.safe.cl');
-        var src2s = cl.loadSource('kernels/rng2.safe.cl');
-        for (var d=0; d < cl.devices.length; d++) {
-          var ctx = cl.devices[d].contexts[0];
-          var kernel1 = ctx.buildKernel({ source: src1 });
-          var kernel2 = ctx.buildKernel({ source: src2 });
-          var kernel1s = ctx.buildKernel({ source: src1s });
-          var kernel2s = ctx.buildKernel({ source: src2s });
-          var buffer16M = ctx.createBuffer({ size: 16*1024*1024 });
-          var queue = ctx.createCommandQueue();
+        it("should be faster using uint4 than uint[4]", function() {
+          var src1 = cl.loadSource('kernels/rng.cl');
+          var src2 = cl.loadSource('kernels/rng2.cl');
+          var src1s = cl.loadSource('kernels/rng.safe.cl');
+          var src2s = cl.loadSource('kernels/rng2.safe.cl');
+          var kernel1 = CTX.buildKernel({ source: src1 });
+          var kernel2 = CTX.buildKernel({ source: src2 });
+          var kernel1s = CTX.buildKernel({ source: src1s });
+          var kernel2s = CTX.buildKernel({ source: src2s });
+          var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
+          var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
           kernel1.setArgTypes('BUFFER', 'UINT');
-          kernel1.setArgSizes(1, 1);
           kernel1.setArgs(buffer16M, 0xdeadbeef);
           kernel2.setArgTypes('BUFFER', 'UINT');
-          kernel2.setArgSizes(1, 1);
           kernel2.setArgs(buffer16M, 0xdeadbeef);
           kernel1s.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          kernel1s.setArgSizes(1, 1, 1);
           kernel1s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
           kernel2s.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          kernel2s.setArgSizes(1, 1, 1);
           kernel2s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
           var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
           var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
           var msKernel1s = exec(kernel1s, WORKSIZE, 5).msec;
           var msKernel2s = exec(kernel2s, WORKSIZE, 5).msec;
-          console.log(ctx.device.version);
+          console.log(CTX.device.version);
           console.log("  array unsafe :", msKernel1);
           console.log("  vector unsafe:", msKernel2);
           console.log("  array safe   :", msKernel1s);
@@ -527,28 +644,23 @@ describe("WebCL", function() {
           console.log("  protection overhead when using uint[4]:", protectionOverheadArray);
           console.log("  protection overhead when using uint4:", protectionOverheadVector);
           expect(msKernel1s).toBeGreaterThan(msKernel2s);
-        }
+        });
       });
-    });
 
-    it("should have less than 5x overhead in Awesomize Benchmark", function() {
-      var srcMemProtectOff = cl.loadSource('kernels/complete_transformation.cl');
-      var srcMemProtectOn = cl.loadSource('kernels/complete_transformation.safe.cl');
-      for (var d=0; d < cl.devices.length; d++) {
-        var ctx = cl.devices[d].contexts[0];
-        var memProtectOff = ctx.buildKernel({ source: srcMemProtectOff });
-        var memProtectOn = ctx.buildKernel({ source: srcMemProtectOn });
+      it("should have less than 5x overhead in Awesomize Benchmark", function() {
+        var srcMemProtectOff = cl.loadSource('kernels/complete_transformation.cl');
+        var srcMemProtectOn = cl.loadSource('kernels/complete_transformation.safe.cl');
+        var memProtectOff = CTX.buildKernel({ source: srcMemProtectOff });
+        var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
         var WORKSIZE = 1024*1024;
         var GROUPSIZE = Math.max(memProtectOn.workGroupSize, memProtectOff.workGroupSize);
-        var bufferInput = ctx.createBuffer({ size: 16*WORKSIZE });    // sizeof(float4)=16
-        var bufferOutput = ctx.createBuffer({ size: 16*WORKSIZE });
-        var bufferConst = ctx.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
-        var queue = ctx.createCommandQueue();
+        var bufferInput = CTX.createBuffer({ size: 16*WORKSIZE });    // sizeof(float4)=16
+        var bufferOutput = CTX.createBuffer({ size: 16*WORKSIZE });
+        var bufferConst = CTX.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
+        var queue = CTX.createCommandQueue();
         memProtectOff.setArgTypes('BUFFER', 'BUFFER', 'BUFFER', 'LOCAL');
-        memProtectOff.setArgSizes(1, 1, 1, 1);
         memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, GROUPSIZE*16);
         memProtectOn.setArgTypes('BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'LOCAL', 'ULONG');
-        memProtectOn.setArgSizes(1, 1, 1);
         memProtectOn.setArgs(bufferInput, WORKSIZE,
                              bufferOutput, WORKSIZE,
                              bufferConst, WORKSIZE,
@@ -557,26 +669,24 @@ describe("WebCL", function() {
         var msUnprotected = exec(memProtectOff, WORKSIZE).msec;
         var msProtected = exec(memProtectOn, WORKSIZE).msec;
         var slowdown = (msProtected / (msUnprotected || 1.0)).toFixed(2);
-        console.log(ctx.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
+        console.log(CTX.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
         expect(slowdown).toBeLessThan(5.0);
-      }
-    });
+      });
 
-    xit("should have less than 2x overhead in Benchmark #3 (NVIDIA PTX only)", function() {
-      var srcOriginal = cl.loadSource('kernels/synthetic_case.O3.sm_21.ptx');
-      var srcProtected = cl.loadSource('kernels/synthetic_case.O3.clamped.O3.sm_21.ptx');
-      for (var d=0; d < cl.devices.length; d++) {
-        if (cl.devices[d].platform.vendor.indexOf("NVIDIA") !== -1 ||
-            cl.devices[d].vendor.indexOf("NVIDIA") !== -1) {
-          var ctx = cl.devices[d].contexts[0];
+      it("should have less than 2x overhead in Benchmark #3 (NVIDIA PTX only)", function() {
+        var srcOriginal = cl.loadSource('kernels/synthetic_case.O3.sm_21.ptx?foo.cl');
+        var srcProtected = cl.loadSource('kernels/synthetic_case.O3.clamped.O3.sm_21.ptx?foo.cl');
+        if (CTX.device.platform.vendor.indexOf("NVIDIA") !== -1 || CTX.device.vendor.indexOf("NVIDIA") !== -1) {
           var defs = { KERNEL_LOOP_COUNT : 64, PRIVATE_BUFFER_SIZE : 128 };
-          var kernelOriginal = ctx.buildKernel({ ptx: srcOriginal });
-          var kernelProtected = ctx.buildKernel({ ptx: srcProtected });
-          var buffer = ctx.createBuffer({ size: 16*1024*1024 });
-          var queue = ctx.createCommandQueue();
+          var kernelOriginal = CTX.buildKernel({ ptx: srcOriginal });
+          var kernelProtected = CTX.buildKernel({ ptx: srcProtected });
+          var buffer = CTX.createBuffer({ size: 16*1024*1024 });
+          var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer.size / 4;
           var WORKSIZE = BUFFERSIZE / defs.KERNEL_LOOP_COUNT;
+          kernelOriginal.setArgTypes('BUFFER', 'UINT', 'BUFFER', 'UINT');
           kernelOriginal.setArgs(buffer, BUFFERSIZE, buffer, BUFFERSIZE);
+          kernelProtected.setArgTypes('BUFFER', 'UINT', 'UINT', 'BUFFER', 'UINT', 'UINT');
           kernelProtected.setArgs(buffer, BUFFERSIZE, BUFFERSIZE, buffer, BUFFERSIZE, BUFFERSIZE);
           var msecOriginal = exec(kernelOriginal, WORKSIZE, 4).msec;
           var msecProtected = exec(kernelProtected, WORKSIZE, 4).msec;
@@ -584,7 +694,7 @@ describe("WebCL", function() {
           console.log("Slowdown from memory protection:", slowdown);
           expect(slowdown).toBeLessThan(2.0);
         }
-      }
+      });
     });
   });
 
