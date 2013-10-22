@@ -193,7 +193,7 @@ var CL = (function() {
     ctx.name = parameters.name;
     ctx.device = parameters.device;
     ctx.platform = ctx.device.platform;
-    ctx.peer = WebCL.createContext([CL.CONTEXT_PLATFORM, ctx.platform.peer], [ctx.device.peer]);
+    ctx.peer = WebCL.createContext({ devices: ctx.device.peer });
     ctx.device.contexts.push(ctx);
     return ctx;
   };
@@ -327,7 +327,7 @@ var CL = (function() {
     for (var p=0; p < platforms.length; p++) {
       clPlatforms[p] = new Platform();
       clPlatforms[p].peer = platforms[p];
-      clPlatforms[p].vendor = platforms[p].getPlatformInfo(CL.PLATFORM_VENDOR);
+      clPlatforms[p].vendor = platforms[p].getInfo(CL.PLATFORM_VENDOR);
       clPlatforms[p].devices = deviceFactory(clPlatforms[p]);
     }
     return clPlatforms;
@@ -336,17 +336,17 @@ var CL = (function() {
       var clDevices = [];
       var devices = platform.peer.getDevices(CL.DEVICE_TYPE_ALL);
       for (var d=0; d < devices.length; d++) {
-        var isAvailable = devices[d].getDeviceInfo(CL.DEVICE_AVAILABLE);
-        var isCompilerAvailable = devices[d].getDeviceInfo(CL.DEVICE_COMPILER_AVAILABLE);
+        var isAvailable = devices[d].getInfo(CL.DEVICE_AVAILABLE);
+        var isCompilerAvailable = devices[d].getInfo(CL.DEVICE_COMPILER_AVAILABLE);
         if (isAvailable && isCompilerAvailable) {
           var device = new Device();
           device.isAvailable = true;
           device.peer = devices[d];
           device.platform = platform;
-          device.name = device.peer.getDeviceInfo(CL.DEVICE_NAME);
-          device.version = device.peer.getDeviceInfo(CL.DEVICE_VERSION);
-          device.vendor = device.peer.getDeviceInfo(CL.DEVICE_VENDOR);
-          var type = device.peer.getDeviceInfo(CL.DEVICE_TYPE);
+          device.name = device.peer.getInfo(CL.DEVICE_NAME);
+          device.version = device.peer.getInfo(CL.DEVICE_VERSION);
+          device.vendor = device.peer.getInfo(CL.DEVICE_VENDOR);
+          var type = device.peer.getInfo(CL.DEVICE_TYPE);
           if (type === CL.DEVICE_TYPE_CPU) {
             device.type = 'CPU';
             device.id = 'CPU' + (numCPU+1);
@@ -455,7 +455,7 @@ var CL = (function() {
       return image;
     };
 
-    this.buildProgram = function(parameters) {
+    this.build = function(parameters) {
       var program = new Program();
       switch (typeof(parameters)) {
       case 'object':
@@ -468,7 +468,7 @@ var CL = (function() {
         program.source = CL.loadSource(program.uri) || parameters;
         break;
       default:
-        throw "CL.Context.buildProgram: Expected String or Object";
+        throw "CL.Context.build: Expected String or Object";
       }
       program.context = self;
       program.build(parameters);
@@ -477,7 +477,7 @@ var CL = (function() {
     };
 
     this.buildKernels = function(parameters) {
-      var program = self.buildProgram(parameters);
+      var program = self.build(parameters);
       return program.kernels;
     };
 
@@ -508,12 +508,12 @@ var CL = (function() {
     };
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
+      if (self.peer.release) {
         console.log("Context.releaseAll");
         IMP.clearArray(self.programs);
         IMP.clearArray(self.queues);
         IMP.clearArray(self.buffers);
-        self.peer.releaseCLResources();
+        self.peer.release();
         self.peer = "Context.peer: de-initialized";
       }
     };
@@ -536,8 +536,8 @@ var CL = (function() {
     this.name = "uninitialized";
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
-        self.peer.releaseCLResources();
+      if (self.peer.release) {
+        self.peer.release();
         self.peer = "Buffer.peer: de-initialized";
       }
     };
@@ -558,8 +558,8 @@ var CL = (function() {
     this.name = "uninitialized";
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
-        self.peer.releaseCLResources();
+      if (self.peer.release) {
+        self.peer.release();
         self.peer = "Image.peer: de-initialized";
       }
     };
@@ -614,10 +614,10 @@ var CL = (function() {
     };
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
-        self.peer.releaseCLResources();
+      if (self.peer.release) {
+        self.peer.release();
         for (var i=0; i < events.length; i++) {
-          events[i].releaseCLResources();
+          events[i].release();
           delete events[i];
         }
         events.length = 0;
@@ -636,7 +636,7 @@ var CL = (function() {
   };
 
   // ### Program ###
-  // Instantiated by `Context.buildProgram()`
+  // Instantiated by `Context.build()`
   //
   function Program(parameters) {
 
@@ -660,11 +660,11 @@ var CL = (function() {
       if (self.context && (self.source || self.ptx)) {
         try {
           if (self.source) {
-            self.peer = self.context.peer.createProgramWithSource(self.source);
+            self.peer = self.context.peer.createProgram(self.source);
           } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
             self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
           }
-          self.peer.buildProgram([self.context.device.peer], self.compilerDefs + self.compilerOpts);
+          self.peer.build([self.context.device.peer], self.compilerDefs + self.compilerOpts);
           if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
             self.kernels = kernelFactory();
             if (self.kernels.length > 0) {
@@ -692,12 +692,12 @@ var CL = (function() {
     };
 
     this.getBuildStatus = function() {
-      var status = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
+      var status = self.peer.getBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
       return status;
     };
     
     this.getBuildLog = function() {
-      var log = self.peer.getProgramBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+      var log = self.peer.getBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
       return log;
     };
 
@@ -706,8 +706,8 @@ var CL = (function() {
     };
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
-        self.peer.releaseCLResources();
+      if (self.peer.release) {
+        self.peer.release();
         self.peer = "Program.peer: de-initialized";
         IMP.clearArray(self.kernels);
       }
@@ -735,11 +735,11 @@ var CL = (function() {
         clKernels[k].program = self;
         clKernels[k].context = context;
         clKernels[k].device = device;
-        clKernels[k].name = kernels[k].getKernelInfo(CL.KERNEL_FUNCTION_NAME);
-        clKernels[k].numArgs = kernels[k].getKernelInfo(CL.KERNEL_NUM_ARGS);
-        clKernels[k].workGroupSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
-        clKernels[k].localMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
-        clKernels[k].privateMemSize = kernels[k].getKernelWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
+        clKernels[k].name = kernels[k].getInfo(CL.KERNEL_FUNCTION_NAME);
+        clKernels[k].numArgs = kernels[k].getInfo(CL.KERNEL_NUM_ARGS);
+        clKernels[k].workGroupSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
+        clKernels[k].localMemSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
+        clKernels[k].privateMemSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
       }
       return clKernels;
     };
@@ -771,7 +771,7 @@ var CL = (function() {
       var isNamedObject = (typeof(value) === 'string');
 
       if (isTypedArray) {
-        self.peer.setKernelArg(index, value);
+        self.peer.setArg(index, value);
       }
 
       if (isNamedObject || isMemObject) {
@@ -802,9 +802,9 @@ var CL = (function() {
         throw "Invalid kernel argument type: Expected " + typeName + ", received " + value;
       }
       if (typeName === 'LOCAL') {
-        this.peer.setKernelArgLocal(index, value);
+        this.peer.setArg(index, new Uint32Array([value]));
       } else {
-        this.peer.setKernelArg(index, value, expectedTypeCL);
+        this.peer.setArg(index, value, expectedTypeCL);
       }
     };
 
@@ -978,16 +978,16 @@ var CL = (function() {
     };
 
     this.getInfo = function(paramName) {
-      return this.peer.getKernelInfo(paramName);
+      return this.peer.getInfo(paramName);
     };
 
     this.getWorkGroupInfo = function(device, paramName) {
-      return this.peer.getKernelWorkGroupInfo(device.peer, paramName);
+      return this.peer.getWorkGroupInfo(device.peer, paramName);
     };
 
     this.releaseAll = function() {
-      if (self.peer.releaseCLResources) {
-        self.peer.releaseCLResources();
+      if (self.peer.release) {
+        self.peer.release();
         self.peer = "Kernel.peer: de-initialized";
       }
     };

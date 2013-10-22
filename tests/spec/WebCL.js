@@ -27,7 +27,7 @@ jasmine.Env.prototype.failFast = function() {
 };
 
 // Uncomment the following line to enable the "fail fast" mode.
-// jasmine.getEnv().failFast();
+//jasmine.getEnv().failFast();
 
 describe("WebCL", function() {
 
@@ -38,46 +38,60 @@ describe("WebCL", function() {
   //
   // 
   describe("window.WebCL", function() {
+
     it("must exist", function() {
       expect(WebCL).toBeDefined();
     });
 
-    xit("must have all the specified functions", function() {
-      for (var funcName in expectedFunctions) {
-        expect(funcName).toExist();
-        expect(funcName).toHaveType('function');
+    it("must have all specified classes", function() {
+      for (var className in expectedClasses) {
+        expect(window).toHaveFunction(className);
+      }
+    });
+
+    it("must have all specified functions", function() {
+      for (var funcName in expectedFunctions.WebCL) {
+        if (expectedFunctions.WebCL[funcName] === true) {
+          expect(WebCL).toHaveFunction(funcName);
+        }
+      }
+    });
+    
+    xit("must not have functions that have been removed", function() {
+      for (var funcName in expectedFunctions.WebCL) {
+        if (expectedFunctions.WebCL[funcName] === false) {
+          expect(WebCL).not.toHaveFunction(funcName);
+        }
       }
     });
 
     it("must have error code enums ranging from 0 to -64", function() {
       for (var enumName in errorEnums) {
-        var expectedEnumValue = errorEnums[enumName];
-        var actualEnumValue = WebCL[enumName];
-        expect(enumName).toExist();
-        expect(enumName).toHaveType('number');
-        expect(enumName).toHaveValue(expectedEnumValue);
+        var actualValue = WebCL[enumName];
+        var expectedValue = errorEnums[enumName];
+        expect(actualValue).toBeDefined();
+        expect(actualValue).toEqual(expectedValue);
       }
     });
 
     xit("must not have error code enums that have been removed", function() {
       for (var enumName in removedErrorEnums) {
-        expect(enumName).not.toExist();
+        expect(WebCL[enumName]).not.toBeDefined();
       }
     });
 
     it("must have device info enums ranging from 0x1000 to 0x103D", function() {
       for (var enumName in deviceInfoEnums) {
-        var expectedEnumValue = deviceInfoEnums[enumName];
-        var actualEnumValue = WebCL[enumName];
-        expect(enumName).toExist();
-        expect(enumName).toHaveType('number');
-        expect(enumName).toHaveValue(expectedEnumValue);
+        var actualValue = WebCL[enumName];
+        var expectedValue = deviceInfoEnums[enumName];
+        expect(actualValue).toBeDefined();
+        expect(actualValue).toEqual(expectedValue);
       }
     });
 
     xit("must not have device info enums that have been removed", function() {
       for (var enumName in removedDeviceInfoEnums) {
-        expect(enumName).not.toExist();
+        expect(WebCL[enumName]).not.toBeDefined();
       }
     });
 
@@ -88,16 +102,56 @@ describe("WebCL", function() {
     it("must have at least one Device on each Platform", function() {
       var platforms = WebCL.getPlatforms();
       for (var p=0; p < platforms.length; p++) {
-        expect(platforms[p].getDevices(WebCL.CL_DEVICE_TYPE_ALL).length).toBeGreaterThan(0);
+        expect(platforms[p].getDevices().length).toBeGreaterThan(0);
       }
     });
 
     it("must have all Devices on all Platforms available", function() {
       var platforms = WebCL.getPlatforms();
       for (var p=0; p < platforms.length; p++) {
-        var devices = platforms[p].getDevices(WebCL.CL_DEVICE_TYPE_ALL);
+        var devices = platforms[p].getDevices();
         for (var d=0; d < devices.length; d++) {
-          expect(devices[d].getDeviceInfo(WebCL.CL_DEVICE_AVAILABLE)).toEqual(true);
+          expect(devices[d].getInfo(WebCL.CL_DEVICE_AVAILABLE)).toEqual(true);
+        }
+      }
+    });
+  });
+
+  describe("WebCLPlatform", function() {
+    it("must have all specified functions", function() {
+      var plat = WebCL.getPlatforms()[0];
+      for (var funcName in expectedFunctions.WebCLPlatform) {
+        if (expectedFunctions.WebCLPlatform[funcName] === true) {
+          expect(plat).toHaveFunction(funcName);
+        }
+      }
+    });
+
+    xit("must not have functions that have been removed", function() {
+      var plat = WebCL.getPlatforms()[0];
+      for (var funcName in expectedFunctions.WebCLPlatform) {
+        if (expectedFunctions.WebCLPlatform[funcName] === false) {
+          expect(plat).not.toHaveFunction(funcName);
+        }
+      }
+    });
+  });
+
+  describe("WebCLDevice", function() {
+    it("must have all specified functions", function() {
+      var device = WebCL.getPlatforms()[0].getDevices()[0];
+      for (var funcName in expectedFunctions.WebCLDevice) {
+        if (expectedFunctions.WebCLDevice[funcName] === true) {
+          expect(device).toHaveFunction(funcName);
+        }
+      }
+    });
+
+    xit("must not have functions that have been removed", function() {
+      var device = WebCL.getPlatforms()[0].getDevices()[0];
+      for (var funcName in expectedFunctions.WebCLDevice) {
+        if (expectedFunctions.WebCLDevice[funcName] === false) {
+          expect(device).not.toHaveFunction(funcName);
         }
       }
     });
@@ -152,7 +206,7 @@ describe("WebCL", function() {
       var testFunc = function() {
         var uri = 'kernels/rng.cl';
         var src = cl.loadSource(uri);
-        var prog1 = ctx.buildProgram({ source: src });
+        var prog1 = ctx.build({ source: src });
         var kernel1 = ctx.buildKernel({ source: src });
         var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
         var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
@@ -177,7 +231,7 @@ describe("WebCL", function() {
         if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
           var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
           var src = cl.loadSource(uri);
-          var prog1 = ctx.buildProgram({ ptx: src });
+          var prog1 = ctx.build({ ptx: src });
           var kernel1 = ctx.buildKernel({ ptx: src });
           expect(prog1.peer instanceof WebCLProgram).toBeTruthy();
           expect(kernel1.peer instanceof WebCLKernel).toBeTruthy();
@@ -217,9 +271,19 @@ describe("WebCL", function() {
       for (var p=0; p < cl.platforms.length; p++) {
         var plat = cl.platforms[p].peer;
         var device = cl.platforms[p].devices[0].peer;
-        var ctx = WebCL.createContext([], [device]);
+        var ctx = WebCL.createContext();
         expect(typeof ctx).toBe('object');
-        ctx.releaseCLResources();
+        ctx.release();
+      }
+    });
+
+    it("must be able to create a Context on default Device", function() {
+      for (var p=0; p < cl.platforms.length; p++) {
+        var plat = cl.platforms[p].peer;
+        var device = cl.platforms[p].devices[0].peer;
+        var ctx = WebCL.createContext();
+        expect(typeof ctx).toBe('object');
+        ctx.release();
       }
     });
 
@@ -230,9 +294,9 @@ describe("WebCL", function() {
         for (var d=0; d < cl.platforms[p].devices.length; d++) {
           devices.push(cl.platforms[p].devices[d].peer);
         }
-        var ctx = WebCL.createContext([CL.CONTEXT_PLATFORM, plat], devices);
+        var ctx = WebCL.createContext({ devices: devices });
         expect(typeof ctx).toBe('object');
-        ctx.releaseCLResources();
+        ctx.release();
       }
     });
 
@@ -249,7 +313,7 @@ describe("WebCL", function() {
         var ctx = cl.devices[d].contexts[0];
         var queue = ctx.peer.createCommandQueue(cl.devices[d].peer, null);
         expect(typeof queue).toBe('object');
-        queue.releaseCLResources();
+        queue.release();
       }
     });
 
@@ -258,7 +322,7 @@ describe("WebCL", function() {
         var ctx = cl.devices[d].contexts[0];
         var buffer1M = ctx.peer.createBuffer(CL.MEM_READ_WRITE, 1024*1024);
         expect(typeof buffer1M).toBe('object');
-        buffer1M.releaseCLResources();
+        buffer1M.release();
       }
     });
 
@@ -315,7 +379,7 @@ describe("WebCL", function() {
       it("Must be able to build a Program from source", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
+          var program = ctx.build({ source: sobel });
           expect(program.built).toEqual(true);
         }
       });
@@ -325,9 +389,9 @@ describe("WebCL", function() {
       xit("Must not crash when querying Program binary sizes", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
+          var program = ctx.build({ source: sobel });
           function getBinaries() {
-	          var sizes = program.peer.getProgramInfo(CL.PROGRAM_BINARY_SIZES);
+	          var sizes = program.peer.getInfo(CL.PROGRAM_BINARY_SIZES);
 	          console.log("Size of binary executable in bytes: ", sizes[0]);
 	          return sizes;
           }
@@ -340,9 +404,9 @@ describe("WebCL", function() {
       xit("Must not be able to get Program binaries", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
+          var program = ctx.build({ source: sobel });
           function getBinaries() {
-            return program.peer.getProgramInfo(CL.PROGRAM_BINARIES);
+            return program.peer.getInfo(CL.PROGRAM_BINARIES);
           }
           expect(getBinaries).toThrow();
         }
@@ -749,29 +813,149 @@ describe("WebCL", function() {
 
   beforeEach(function() {
     this.addMatchers({
-      toExist: function() {
-        var propertyName = this.actual;
-        return (WebCL[propertyName] !== undefined);
+      toHaveProperty: function(name) {
+        var obj = this.actual;
+        return (obj[name] !== undefined);
       },
-      toHaveValue: function(expected) {
-        var propertyName = this.actual;
-        return (WebCL[propertyName] === expected);
+      toHaveFunction: function(name) {
+        var obj = this.actual;
+        return (typeof(obj[name]) === 'function');
       },
-      toHaveType: function(expected) {
-        var propertyName = this.actual;
-        return (typeof WebCL[propertyName] === expected);
-      }
     });
   });
 
   //////////////////////////////////////////////////////////////
 
+  var expectedClasses = {
+    WebCLPlatform : true,
+    WebCLDevice : true,
+    WebCLContext : true,
+    WebCLCommandQueue : true,
+    WebCLMemoryObject : true,
+    WebCLBuffer : true,
+    WebCLImage : true,
+    WebCLSampler : true,
+    WebCLProgram : true,
+    WebCLKernel : true,
+    WebCLEvent : true,
+    WebCLUserEvent : true,
+  };
+
   var expectedFunctions = {
-    getPlatforms : true,
-    createContext : true,
-    getExtension : true,
-    getSupportedExtensions : true,
-    waitForEvents : true,
+
+    WebCL : {
+      getPlatforms : true,
+      createContext : true,
+      getSupportedExtensions : true,
+      enableExtension : true,
+      waitForEvents : true,
+      getPlatformIDs : false,         // renamed to getPlatforms
+      createContextFromType : false,  // merged into createContext
+    },
+
+    WebCLPlatform : {
+      getInfo : true,
+      getDevices : true,
+      getSupportedExtensions : true,
+      enableExtension : true,
+      getDeviceIDs : false,           // renamed to getDevices
+      getPlatformInfo : false,        // renamed to getInfo
+    },
+
+    WebCLDevice : {
+      getInfo : true,
+      getSupportedExtensions : true,
+      enableExtension : true,
+      getDeviceInfo : false,          // renamed to getInfo
+    },
+
+    WebCLContext : {
+      createBuffer : true,
+      createCommandQueue : true,
+      createImage : true,
+      createProgram : true,
+      createSampler : true,
+      createUserEvent : true,
+      getInfo : true,
+      getSupportedImageFormats : true,
+      release : true,
+      releaseAll : true,
+      createImage2D : false,            // renamed to createImage
+      createImage3D : false,            // disallowed by WebCL
+      createProgramWithSource : false,  // renamed to createProgram
+      createProgramWithBinary : false,  // disallowed by WebCL
+    },
+
+    WebCLCommandQueue : {
+      enqueueCopyBuffer : true,
+      enqueueCopyBufferRect : true,
+      enqueueCopyImage : true,
+      enqueueCopyImageToBuffer : true,
+      enqueueCopyBufferToImage : true,
+      enqueueReadBuffer : true,
+      enqueueReadBufferRect : true,
+      enqueueReadImage : true,
+      enqueueWriteBuffer : true,
+      enqueueWriteBufferRect : true,
+      enqueueWriteImage : true,
+      enqueueNDRangeKernel : true,
+      enqueueMarker : true,
+      enqueueBarrier : true,
+      enqueueWaitForEvents : true,
+      finish : true,
+      flush : true,
+      getInfo : true,
+      release : true,
+      enqueueTask : false,              // disallowed by WebCL
+    },
+
+    WebCLMemoryObject : {
+      getInfo : true,
+      release : true,
+    },
+
+    WebCLBuffer : {
+      createSubBuffer : true,
+    },
+
+    WebCLImage : {
+      getInfo : true,
+    },
+
+    WebCLSampler : {
+      getInfo : true,
+      release : true,
+    },
+
+    WebCLProgram : {
+      getInfo : true,
+      getBuildInfo : true,
+      build : true,
+      createKernel : true,
+      createKernelsInProgram : true,
+      release : true,
+      buildProgram : false,          // renamed to build
+      getProgramInfo : false,        // renamed to getInfo
+      getProgramBuildInfo : false,   // renamed to getBuildInfo
+    },
+
+    WebCLKernel : {
+      getInfo : true,
+      getWorkGroupInfo : true,
+      setArg : true,
+      release : true,
+    },
+
+    WebCLEvent : {
+      getInfo : true,
+      getProfilingInfo : true,
+      setCallback : true,
+      release : true,
+    },
+
+    WebCLUserEvent : {
+      setUserEventStatus : true,
+    },
   };
 
   var errorEnums = {
