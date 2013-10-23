@@ -849,6 +849,7 @@ describe("WebCL", function() {
       getSupportedExtensions : true,
       enableExtension : true,
       waitForEvents : true,
+      releaseAll : true,
       getPlatformIDs : false,         // renamed to getPlatforms
       createContextFromType : false,  // merged into createContext
     },
