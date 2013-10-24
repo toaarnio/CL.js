@@ -31,7 +31,7 @@ jasmine.Env.prototype.failFast = function() {
 
 describe("WebCL", function() {
 
-  var SELECTED_DEVICE = 0;
+  var SELECTED_DEVICE = 2;
 
   //////////////////////////////////////////////////////////////////////////////
   //
@@ -251,10 +251,12 @@ describe("WebCL", function() {
 
     var cl = null;
 
-    function beforeAny() {
-      console.log("WebCLContext test suite - beforeAny()");
-      cl = new CL({ debug: true, cleanup: true });
-    };
+    beforeEach(function() {
+      if (!cl) {
+        console.log("WebCLContext test suite - beforeEach()");
+        cl = new CL({ debug: true, cleanup: true });
+      }
+    });
 
     function createContexts() {
       for (var d=0; d < cl.devices.length; d++) {
@@ -263,25 +265,13 @@ describe("WebCL", function() {
     };
 
     it("must be testable", function() {
-      beforeAny();
       expect(cl.devices.length).toBeGreaterThan(0);
     });
 
     it("must be able to create a Context on default Device", function() {
       for (var p=0; p < cl.platforms.length; p++) {
-        var plat = cl.platforms[p].peer;
-        var device = cl.platforms[p].devices[0].peer;
-        var ctx = WebCL.createContext();
-        expect(typeof ctx).toBe('object');
-        ctx.release();
-      }
-    });
-
-    it("must be able to create a Context on default Device", function() {
-      for (var p=0; p < cl.platforms.length; p++) {
-        var plat = cl.platforms[p].peer;
-        var device = cl.platforms[p].devices[0].peer;
-        var ctx = WebCL.createContext();
+        var plat = cl.platforms[p];
+        var ctx = WebCL.createContext({ platform: plat });
         expect(typeof ctx).toBe('object');
         ctx.release();
       }
@@ -289,10 +279,10 @@ describe("WebCL", function() {
 
     it("must be able to create a Context spanning all Devices on a Platform", function() {
       for (var p=0; p < cl.platforms.length; p++) {
-        var plat = cl.platforms[p].peer;
+        var plat = cl.platforms[p];
         var devices = [];
-        for (var d=0; d < cl.platforms[p].devices.length; d++) {
-          devices.push(cl.platforms[p].devices[d].peer);
+        for (var d=0; d < plat.devices.length; d++) {
+          devices.push(plat.devices[d]);
         }
         var ctx = WebCL.createContext({ devices: devices });
         expect(typeof ctx).toBe('object');
@@ -311,7 +301,7 @@ describe("WebCL", function() {
     it("must be able to create a CommandQueue on any Device", function() {
       for (var d=0; d < cl.devices.length; d++) {
         var ctx = cl.devices[d].contexts[0];
-        var queue = ctx.peer.createCommandQueue(cl.devices[d].peer, null);
+        var queue = ctx.peer.createCommandQueue(cl.devices[d], null);
         expect(typeof queue).toBe('object');
         queue.release();
       }
@@ -354,22 +344,27 @@ describe("WebCL", function() {
       expect(cl.devices[0].contexts.length).toEqual(0);
     });
 
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    //
+    // 
     describe("WebCLProgram", function() {
 
       var sobel;
       var cl = null;
 
-      function beforeAny() {
-        console.log("WebCLProgram test suite - beforeAny()");
-        cl = new CL({ debug: true, cleanup: false });
-        sobel = cl.loadSource('kernels/sobel.cl');
-        for (var d=0; d < cl.devices.length; d++) {
-          cl.createContext({ device: cl.devices[d] });
+      beforeEach(function() {
+        if (!cl) {
+          console.log("WebCLProgram test suite - beforeEach()");
+          cl = new CL({ debug: true, cleanup: false });
+          sobel = cl.loadSource('kernels/sobel.cl');
+          for (var d=0; d < cl.devices.length; d++) {
+            cl.createContext({ device: cl.devices[d] });
+          }
         }
-      };
+      });
 
       it("must be testable", function() {
-        beforeAny();
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
           expect(ctx instanceof Object).toBe(true);
@@ -596,7 +591,7 @@ describe("WebCL", function() {
           var buffer16M = CTX.createBuffer({ size: BUFFERSIZE });
           var queue = CTX.createCommandQueue();
           memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          memProtectOn.setArgs(buffer16M, WORKSIZE, 0xdeadbeef);
+          memProtectOn.setArgs(buffer16M, new Uint32Array([WORKSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msJavaScript / msProtected).toFixed(2);
           console.log(CTX.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
@@ -661,9 +656,9 @@ describe("WebCL", function() {
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
           memProtectOff.setArgTypes('BUFFER', 'UINT');
-          memProtectOff.setArgs(buffer16M, 0xdeadbeef);
+          memProtectOff.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
           memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          memProtectOn.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
+          memProtectOn.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msProtected / msUnprotected).toFixed(2);
@@ -685,13 +680,13 @@ describe("WebCL", function() {
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
           kernel1.setArgTypes('BUFFER', 'UINT');
-          kernel1.setArgs(buffer16M, 0xdeadbeef);
+          kernel1.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
           kernel2.setArgTypes('BUFFER', 'UINT');
-          kernel2.setArgs(buffer16M, 0xdeadbeef);
+          kernel2.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
           kernel1s.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          kernel1s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
+          kernel1s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
           kernel2s.setArgTypes('BUFFER', 'ULONG', 'UINT');
-          kernel2s.setArgs(buffer16M, BUFFERSIZE, 0xdeadbeef);
+          kernel2s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
           var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
           var msKernel1s = exec(kernel1s, WORKSIZE, 5).msec;
@@ -707,7 +702,7 @@ describe("WebCL", function() {
           var protectionOverheadVector = (msKernel2s / msKernel2).toFixed(2);
           console.log("  protection overhead when using uint[4]:", protectionOverheadArray);
           console.log("  protection overhead when using uint4:", protectionOverheadVector);
-          expect(msKernel1s).toBeGreaterThan(msKernel2s);
+        expect(msKernel1s).toBeGreaterThan(msKernel2s);
         });
       });
 
@@ -723,12 +718,12 @@ describe("WebCL", function() {
         var bufferConst = CTX.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
         var queue = CTX.createCommandQueue();
         memProtectOff.setArgTypes('BUFFER', 'BUFFER', 'BUFFER', 'LOCAL');
-        memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, GROUPSIZE*16);
+        memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, new Uint32Array([GROUPSIZE*16]));
         memProtectOn.setArgTypes('BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'LOCAL', 'ULONG');
-        memProtectOn.setArgs(bufferInput, WORKSIZE,
-                             bufferOutput, WORKSIZE,
-                             bufferConst, WORKSIZE,
-                             GROUPSIZE*16, GROUPSIZE);
+        memProtectOn.setArgs(bufferInput, new Uint32Array([WORKSIZE, 0]),
+                             bufferOutput, new Uint32Array([WORKSIZE, 0]),
+                             bufferConst, new Uint32Array([WORKSIZE, 0]),
+                             new Uint32Array([GROUPSIZE*16]), new Uint32Array([GROUPSIZE, 0]));
 
         var msUnprotected = exec(memProtectOff, WORKSIZE).msec;
         var msProtected = exec(memProtectOn, WORKSIZE).msec;
@@ -749,9 +744,10 @@ describe("WebCL", function() {
           var BUFFERSIZE = buffer.size / 4;
           var WORKSIZE = BUFFERSIZE / defs.KERNEL_LOOP_COUNT;
           kernelOriginal.setArgTypes('BUFFER', 'UINT', 'BUFFER', 'UINT');
-          kernelOriginal.setArgs(buffer, BUFFERSIZE, buffer, BUFFERSIZE);
+          kernelOriginal.setArgs(buffer, new Uint32Array([BUFFERSIZE]), buffer, new Uint32Array([BUFFERSIZE]));
           kernelProtected.setArgTypes('BUFFER', 'UINT', 'UINT', 'BUFFER', 'UINT', 'UINT');
-          kernelProtected.setArgs(buffer, BUFFERSIZE, BUFFERSIZE, buffer, BUFFERSIZE, BUFFERSIZE);
+          kernelProtected.setArgs(buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]), 
+                                  buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]));
           var msecOriginal = exec(kernelOriginal, WORKSIZE, 4).msec;
           var msecProtected = exec(kernelProtected, WORKSIZE, 4).msec;
           var slowdown = (msecProtected / msecOriginal).toFixed(2);
@@ -807,7 +803,6 @@ describe("WebCL", function() {
     });
 
   });
-
 
   //////////////////////////////////////////////////////////////
 

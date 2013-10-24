@@ -193,7 +193,7 @@ var CL = (function() {
     ctx.name = parameters.name;
     ctx.device = parameters.device;
     ctx.platform = ctx.device.platform;
-    ctx.peer = WebCL.createContext({ devices: ctx.device.peer });
+    ctx.peer = WebCL.createContext({ devices: ctx.device });
     ctx.device.contexts.push(ctx);
     return ctx;
   };
@@ -322,31 +322,34 @@ var CL = (function() {
   function platformFactory() {
     var numGPU = 0;
     var numCPU = 0;
-    var clPlatforms = [];
     var platforms = WebCL.getPlatforms();
     for (var p=0; p < platforms.length; p++) {
-      clPlatforms[p] = new Platform();
-      clPlatforms[p].peer = platforms[p];
-      clPlatforms[p].vendor = platforms[p].getInfo(CL.PLATFORM_VENDOR);
-      clPlatforms[p].devices = deviceFactory(clPlatforms[p]);
+      platforms[p].vendor = platforms[p].getInfo(CL.PLATFORM_VENDOR);
+      platforms[p].devices = deviceFactory(platforms[p]);
+      platforms[p].contexts = [];
     }
-    return clPlatforms;
+    return platforms;
 
     function deviceFactory(platform) {
-      var clDevices = [];
-      var devices = platform.peer.getDevices(CL.DEVICE_TYPE_ALL);
+      var devices = platform.getDevices(CL.DEVICE_TYPE_ALL);
       for (var d=0; d < devices.length; d++) {
         var isAvailable = devices[d].getInfo(CL.DEVICE_AVAILABLE);
         var isCompilerAvailable = devices[d].getInfo(CL.DEVICE_COMPILER_AVAILABLE);
         if (isAvailable && isCompilerAvailable) {
-          var device = new Device();
+          var device = devices[d];
           device.isAvailable = true;
-          device.peer = devices[d];
           device.platform = platform;
-          device.name = device.peer.getInfo(CL.DEVICE_NAME);
-          device.version = device.peer.getInfo(CL.DEVICE_VERSION);
-          device.vendor = device.peer.getInfo(CL.DEVICE_VENDOR);
-          var type = device.peer.getInfo(CL.DEVICE_TYPE);
+          device.name = device.getInfo(CL.DEVICE_NAME);
+          device.version = device.getInfo(CL.DEVICE_VERSION);
+          device.vendor = device.getInfo(CL.DEVICE_VENDOR);
+          device.contexts = [];
+          device.getContext = function(name) {
+            return IMP.getFromArray(this.contexts, name);
+          };
+          device.releaseAll = function() {
+            IMP.clearArray(this.contexts);
+          };
+          var type = device.getInfo(CL.DEVICE_TYPE);
           if (type === CL.DEVICE_TYPE_CPU) {
             device.type = 'CPU';
             device.id = 'CPU' + (numCPU+1);
@@ -356,41 +359,9 @@ var CL = (function() {
             device.id = 'GPU' + (numGPU+1);
             numGPU++;
           }
-          clDevices.push(device);
         }
       }
-      return clDevices;
-    };
-  };
-
-  // ### Platform ###
-  // Automatically instantiated by CL constructor
-  //
-  function Platform(parameters) {
-    this.peer = "Platform.peer: not yet initialized";
-    this.vendor = null;
-    this.devices = [];
-  };
-
-  // ### Device ###
-  // Automatically instantiated by CL constructor
-  //
-  function Device(parameters) {
-    this.peer = "Device.peer: not yet initialized";
-    this.isAvailable = false;
-    this.platform = null;
-    this.type = null;
-    this.name = null;
-    this.version = null;
-    this.vendor = null;
-    this.contexts = [];
-
-    this.getContext = function(name) {
-      return IMP.getFromArray(this.contexts, name);
-    };
-
-    this.releaseAll = function() {
-      IMP.clearArray(this.contexts);
+      return devices;
     };
   };
 
@@ -412,7 +383,7 @@ var CL = (function() {
       var name = parameters.name || self.queues.length.toString();
       var queue = new CommandQueue();
       var props = IMP.PROFILE===true ? [CL.QUEUE_PROFILING_ENABLE] : null;
-      queue.peer = self.peer.createCommandQueue(self.device.peer, props);
+      queue.peer = self.peer.createCommandQueue(self.device, props);
       queue.context = self;
       queue.name = name;
       self.queues.push(queue);
@@ -424,12 +395,12 @@ var CL = (function() {
       var byteLength = parameters.size || 1024;
       var memFlags = parameters.flags || CL.MEM_READ_WRITE;
       var name = parameters.name || self.buffers.length.toString();
-      var buffer = new Buffer();
-      buffer.peer = self.peer.createBuffer(memFlags, byteLength);
+      var buffer = self.peer.createBuffer(memFlags, byteLength);
       buffer.flags = memFlags;
       buffer.size = byteLength;
       buffer.context = self;
       buffer.name = name;
+      buffer.releaseAll = function() { this.release(); };
       IMP.removeFromArray(self.buffers, name);
       self.buffers.push(buffer);
       return buffer;
@@ -442,14 +413,14 @@ var CL = (function() {
       var memFlags = parameters.flags || CL.MEM_READ_WRITE;
       var imgFormat = parameters.format || { channelOrder : CL.RGBA, channelDataType : CL.UNSIGNED_INT8 };
       var name = parameters.name || self.images.length.toString();
-      var image = new Image();
-      image.peer = self.peer.createImage2D(memFlags, imgFormat, width, height, 0);
+      var image = self.peer.createImage2D(memFlags, imgFormat, width, height, 0);
       image.flags = memFlags;
       image.format = imgFormat;
       image.width = width;
       image.height = height;
       image.context = self;
       image.name = name;
+      image.releaseAll = function() { this.release(); };
       IMP.removeFromArray(self.images, name);
       self.images.push(image);
       return image;
@@ -525,48 +496,6 @@ var CL = (function() {
     var self = this;
   };
 
-  // ### Buffer ###
-  // Instantiated by `Context.createBuffer()`
-  //
-  function Buffer(parameters) {
-    this.peer = "Buffer.peer: not yet initialized";
-    this.context = null;
-    this.flags = -1;
-    this.size = -1;
-    this.name = "uninitialized";
-
-    this.releaseAll = function() {
-      if (self.peer.release) {
-        self.peer.release();
-        self.peer = "Buffer.peer: de-initialized";
-      }
-    };
-
-    var self = this;
-  };
-
-  // ### Image ###
-  // Instantiated by `Context.createImage()`
-  //
-  function Image(parameters) {
-    this.peer = "Image.peer: not yet initialized";
-    this.context = null;
-    this.flags = -1;
-    this.format = -1;
-    this.width = -1;
-    this.height = -1;
-    this.name = "uninitialized";
-
-    this.releaseAll = function() {
-      if (self.peer.release) {
-        self.peer.release();
-        self.peer = "Image.peer: de-initialized";
-      }
-    };
-
-    var self = this;
-  };
-
   // ### CommandQueue ###
   // Instantiated by `Context.createCommandQueue()`
   //
@@ -585,7 +514,7 @@ var CL = (function() {
     this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
       var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
       var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-      var event = self.peer.enqueueWriteBuffer(dstBuffer.peer, false, 0, numBytes, srcArray, []);
+      var event = self.peer.enqueueWriteBuffer(dstBuffer, false, 0, numBytes, srcArray, []);
       events.push(event);
       return event;
     };
@@ -593,7 +522,7 @@ var CL = (function() {
     this.enqueueReadBuffer = function(srcBuffer, dstArray) {
       var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
       var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-      var event = self.peer.enqueueReadBuffer(srcBuffer.peer, false, 0, numBytes, dstArray, []);
+      var event = self.peer.enqueueReadBuffer(srcBuffer, false, 0, numBytes, dstArray, []);
       events.push(event);
       return event;
     };
@@ -662,9 +591,9 @@ var CL = (function() {
           if (self.source) {
             self.peer = self.context.peer.createProgram(self.source);
           } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
-            self.peer = self.context.peer.createProgramWithBinary([self.context.device.peer], [self.ptx]);
+            self.peer = self.context.peer.createProgramWithBinary([self.context.device], [self.ptx]);
           }
-          self.peer.build([self.context.device.peer], self.compilerDefs + self.compilerOpts);
+          self.peer.build([self.context.device], self.compilerDefs + self.compilerOpts);
           if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
             self.kernels = kernelFactory();
             if (self.kernels.length > 0) {
@@ -692,12 +621,12 @@ var CL = (function() {
     };
 
     this.getBuildStatus = function() {
-      var status = self.peer.getBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_STATUS);
+      var status = self.peer.getBuildInfo(self.context.device, CL.PROGRAM_BUILD_STATUS);
       return status;
     };
     
     this.getBuildLog = function() {
-      var log = self.peer.getBuildInfo(self.context.device.peer, CL.PROGRAM_BUILD_LOG);
+      var log = self.peer.getBuildInfo(self.context.device, CL.PROGRAM_BUILD_LOG);
       return log;
     };
 
@@ -737,9 +666,9 @@ var CL = (function() {
         clKernels[k].device = device;
         clKernels[k].name = kernels[k].getInfo(CL.KERNEL_FUNCTION_NAME);
         clKernels[k].numArgs = kernels[k].getInfo(CL.KERNEL_NUM_ARGS);
-        clKernels[k].workGroupSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_WORK_GROUP_SIZE);
-        clKernels[k].localMemSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_LOCAL_MEM_SIZE);
-        clKernels[k].privateMemSize = kernels[k].getWorkGroupInfo(device.peer, CL.KERNEL_PRIVATE_MEM_SIZE);
+        clKernels[k].workGroupSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_WORK_GROUP_SIZE);
+        clKernels[k].localMemSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_LOCAL_MEM_SIZE);
+        clKernels[k].privateMemSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_PRIVATE_MEM_SIZE);
       }
       return clKernels;
     };
@@ -760,120 +689,31 @@ var CL = (function() {
     this.program = null;
     this.context = null;
     this.device = null;
-    
-    // Sets kernel arguments using the legacy WebCL prototype API
+
+    // Convenience wrapper for setArg that allows passing ordinary
+    // JavaScript numbers and arrays, instead of having to wrap an
+    // ArrayBufferView around everything.
     //
-    this.setArgLegacy = function(index, value) {
-
-      var isNumber = (typeof(value) === 'number');
-      var isTypedArray = (value.buffer instanceof ArrayBuffer)
-      var isMemObject = (value instanceof Buffer || value instanceof Image);
-      var isNamedObject = (typeof(value) === 'string');
-
-      if (isTypedArray) {
-        self.peer.setArg(index, value);
-      }
-
-      if (isNamedObject || isMemObject) {
-        var memObject = isMemObject && value;
-        memObject = memObject || self.context.getBuffer(value);
-        memObject = memObject || self.context.getImage(value);
-        value = memObject.peer;
-      }
-
-      var typemap = {
-        'BYTE' : ['number', WebCL.types.CHAR],
-        'UBYTE' : ['number', WebCL.types.UCHAR],
-        'SHORT' : ['number', WebCL.types.SHORT],
-        'USHORT' : ['number', WebCL.types.USHORT],
-        'INT' : ['number', WebCL.types.INT],
-        'UINT' : ['number', WebCL.types.UINT],
-        'LONG' : ['number', WebCL.types.LONG],
-        'ULONG' : ['number', WebCL.types.ULONG],
-        'LOCAL' : ['number', WebCL.types.UINT],
-        'IMAGE' : ['object', WebCL.types.MEMORY_OBJECT],
-        'BUFFER' : ['object', WebCL.types.MEMORY_OBJECT],
-      };
-
-      var typeName = this.argTypes[index];                 // 'UINT', 'BUFFER', ...
-      var expectedTypeOf = typemap[typeName][0];           // 'number', 'object', ...
-      var expectedTypeCL = typemap[typeName][1];           // WebCL.types.UINT, ...
-      if (typeof(value) !== expectedTypeOf) {
-        throw "Invalid kernel argument type: Expected " + typeName + ", received " + value;
-      }
-      if (typeName === 'LOCAL') {
-        this.peer.setArg(index, new Uint32Array([value]));
-      } else {
-        this.peer.setArg(index, value, expectedTypeCL);
-      }
-    };
-
-    // Sets kernel arguments using the legacy WebCL prototype API
-    //
-    this.setArg = function(index, value) {
-      var isArray = (value instanceof Array);
-      var isNumber = (typeof value === 'number');
-      var isFloat = isNumber && (Math.floor(value) !== value);
-      var isInt = isNumber && !isFloat;
-      var isTypedArray = (value.buffer instanceof ArrayBuffer)
-      var isMemObject = (value instanceof Buffer || value instanceof Image);
-      var isNamedObject = (typeof value === 'string');
-
-      if (isNamedObject || isMemObject) {
-        var memObject = isMemObject && value;
-        memObject = memObject || self.context.getBuffer(value);
-        memObject = memObject || self.context.getImage(value);
-        self.peer.setKernelArg(index, memObject.peer);
-      } else if (isTypedArray) {
-        self.peer.setKernelArg(index, value);
-      } else if (isArray) {
-        throw "Invalid kernel argument type: JavaScript Array arguments not supported.";
-      } else if (isFloat) {
-        self.peer.setKernelArg(index, value, WebCL.types.FLOAT);
-      } else if (isInt) {
-        var type = undefined;
-        type = type || tryArgType(index, value, WebCL.types.INT);
-        type = type || tryArgType(index, value, WebCL.types.LONG);
-        type = type || tryArgType(index, value, WebCL.types.SHORT);
-        type = type || tryArgType(index, value, WebCL.types.FLOAT);
-        if (type === undefined) {
-          try {
-            self.peer.setKernelArgLocal(index, value);
-            type = "LOCAL";
-          } catch (e) {
-            throw "Unrecognized kernel argument type: " + value;
-          }
-        }
-      }
-
-      function tryArgType(index, value, type) {
-        try {
-          self.peer.setKernelArg(index, value, type);
-          return type;
-        } catch (e) {}
-      }
-    };
-
-    // Sets kernel arguments using the WebCL Working Draft way
+    // TODO: Not working yet. Need information about argument types
+    // expected by the kernel, otherwise can't choose the right kind
+    // of ArrayBufferView.
     //
     this.setArgDevel = function(index, value) {
-      var isNumber = (typeof value === 'number');
-      var isFloat = isNumber && (Math.floor(value) !== value);
-      var isInt = isNumber && !isFloat;
-      var isNamedObject = (typeof value === 'string');
-      var isMemObject = (value instanceof Buffer || value instanceof Image);
-      var isArray = (value instanceof Array);
 
-      var isTypedArray = value.buffer && (value.buffer instanceof ArrayBuffer);
+      var isNumber = (typeof value === 'number');
+      var isNamedObject = (typeof value === 'string');
+      var isArray = (value instanceof Array);
+      var isMemObject = (value instanceof WebCLMemoryObject);
+      var isTypedArray = (value.buffer instanceof ArrayBuffer);
       var is8bit = isTypedArray && (value.BYTES_PER_ELEMENT === 1);
       var is16bit = isTypedArray && (value.BYTES_PER_ELEMENT === 2);
       var is32bit = isTypedArray && (value.BYTES_PER_ELEMENT === 4);
-      var isFloat32 = is32bit && (value instanceof Float32Array);
+      var isFloat32 = value instanceof Float32Array;
       var isInteger = !isFloat32;
       
       var buffer = new ArrayBuffer(8*16);          // enough space for a double16
 
-      // CASE 1: Single scalar
+      // CASE 1: Single scalar (not yet supported)
       //
       if (isNumber) {
         var byteView = new Int8Array(buffer, 0, 1);
@@ -899,69 +739,42 @@ var CL = (function() {
           'IMAGE' : null,
           'BUFFER' : null,
         };
-        var expectedType = this.argTypes[index];
-        console.log("Expected type: ", expectedType);
-        var view = typemap[expectedType];
-        if (view) {
-          if (expectedType == 'LOCAL') {
-            self.peer.setKernelArgLocal(index, value);
-            return;
-          }
-          if (expectedType == 'ULONG') {
-            view[0] = value >> 32;
-            view[1] = value & 0xffffffff;
-            //self.peer.setkernelArg(index, view);
-            self.peer.setKernelArg(index, value, WebCL.types.ULONG);
-            return;
-          } else {
-            view[0] = value;
-            self.setArg(index, value);
-            //self.peer.setKernelArg(index, view);
-            return;
-          }
-        } else {
-          throw "Invalid kernel argument type: Expected " + expectedType;
-        }
       }
 
       // CASE 2: Typed Array (not yet supported)
       //
       if (isTypedArray) {
-        var expectedType = this.argTypes[index];
-        var typemap = {
-          'BYTE' : Int8Array,
-          'UBYTE' : Uint8Array,
-          'SHORT' : Int16Array,
-          'USHORT' : Uint16Array,
-          'INT' : Int32Array,
-          'UINT' : Uint32Array,
-          'LONG' : null,
-          'ULONG' : null,
-          'LOCAL' : Uint32Array,
-          'IMAGE' : null,
-          'BUFFER' : null,
-        };
-        var expectedType = typemap[this.argTypes[index]];
-        var expectedSize = this.argSizes[index];
-        var isExpectedType = value instanceof expectedType;
-        var isExpectedSize = (value.length === expectedSize);
-        if (isExpectedType && isExpectedSize) {
-          self.peer.setKernelArg(index, value);
-        } else {
-          throw "Invalid kernel argument: Expected " + expectedSize + " " + expectedType + " elements";
-        }
       }
 
-      // CASE 2: WebCLBuffer or WebCLImage
+      // CASE 3: WebCLBuffer or WebCLImage
       //
       if (isMemObject || isNamedObject) {
         this.setArg(index, value);
       }
     };
 
+    // Convenience wrapper for setArg that allows passing
+    // WebCLMemoryObjects by either name or reference.
+    //
+    this.setArg = function(index, value) {
+      var isMemObject = (value instanceof WebCLMemoryObject);
+      var isNamedObject = (typeof(value) === 'string');
+      if (isNamedObject || isMemObject) {
+        var memObject = isMemObject && value;
+        memObject = memObject || self.context.getBuffer(value);
+        memObject = memObject || self.context.getImage(value);
+        value = memObject;
+      }
+      self.peer.setArg(index, value);
+    };
+
+    // Convenience wrapper for setArg that allows setting all
+    // arguments of a kernel at once. This also allows passing
+    // WebCLMemoryObjects by either name or reference.
+    //
     this.setArgs = function() {
       for (var i=0; i < arguments.length; i++) {
-        self.setArgLegacy(i, arguments[i]);
+        self.setArg(i, arguments[i]);
       }
     };
 
@@ -982,7 +795,7 @@ var CL = (function() {
     };
 
     this.getWorkGroupInfo = function(device, paramName) {
-      return this.peer.getWorkGroupInfo(device.peer, paramName);
+      return this.peer.getWorkGroupInfo(device, paramName);
     };
 
     this.releaseAll = function() {
