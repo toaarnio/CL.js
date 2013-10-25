@@ -442,6 +442,59 @@ describe("WebCL", function() {
         }
       });
 
+      it("Must support all kernel argument scalar types", function() {
+        var result = new Int8Array([127]);
+        var c = new Int8Array([-1]);
+        var s = new Int16Array([-1]);
+        var i = new Int32Array([-1]);
+        var l = new Int32Array([-1, 0]);
+        var uc = new Uint8Array([0xff]);
+        var us = new Uint16Array([0xffff]);
+        var ui = new Uint32Array([0xffffffff]);
+        var ul = new Uint32Array([0xffffffff, 0]);
+        var f32 = new Float32Array([1.0]);
+        var f64 = new Float64Array([1.0]);
+
+        var src = cl.loadSource('kernels/argtypes.cl');
+        for (var d=0; d < cl.devices.length; d++) {
+          var ctx = cl.devices[d].contexts[0];
+          var kernel = ctx.buildKernel({ source: src, opts: "-Werror" });
+          var queue = ctx.createCommandQueue();
+          var resbuf = ctx.createBuffer({ size: 1 });
+          function execute() {
+            kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32, f64);
+            queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
+            queue.enqueueReadBuffer(resbuf, result);
+            queue.peer.finish();
+          }
+          expect(execute).not.toThrow();
+          expect(result[0]).toEqual(0);
+        }
+      });
+
+      it("Must support all kernel argument vector types", function() {
+        var result = new Int8Array([127]);
+        var f32 = new Float32Array([1.0, 1.0, 1.0, 1.0]);
+        var src = cl.loadSource('kernels/argtypes.cl');
+        for (var d=0; d < cl.devices.length; d++) {
+          var ctx = cl.devices[d].contexts[0];
+          ctx.buildKernels({ source: src, opts: "-Werror" });
+          var kernel = ctx.getKernel('vectors');
+          var queue = ctx.createCommandQueue();
+          var resbuf = ctx.createBuffer({ size: 1 });
+          function execute() {
+            //kernel.setArgs(resbuf, f32);
+            kernel.peer.setKernelArg(0, resbuf);
+            kernel.peer.setKernelArg(1, f32, WebCL.types.FLOAT_V);
+            queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
+            queue.enqueueReadBuffer(resbuf, result);
+            queue.peer.finish();
+          }
+          expect(execute).not.toThrow();
+          expect(result[0]).toEqual(0);
+        }
+      });
+
       it("must be able to release all CL resources allocated by this module", function() {
         cl.releaseAll();
         expect(cl.devices[0].contexts.length).toEqual(0);
