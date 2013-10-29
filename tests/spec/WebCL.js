@@ -35,7 +35,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  //
+  // WebCL -- signature check + static functionality
   // 
   describe("window.WebCL", function() {
 
@@ -95,31 +95,16 @@ describe("WebCL", function() {
       }
     });
 
-    it("must have at least one Platform", function() {
-      expect(WebCL.getPlatforms().length).toBeGreaterThan(0);
-    });
-
-    it("must have at least one Device on each Platform", function() {
-      var platforms = WebCL.getPlatforms();
-      for (var p=0; p < platforms.length; p++) {
-        expect(platforms[p].getDevices().length).toBeGreaterThan(0);
-      }
-    });
-
-    it("must have all Devices on all Platforms available", function() {
-      var platforms = WebCL.getPlatforms();
-      for (var p=0; p < platforms.length; p++) {
-        var devices = platforms[p].getDevices();
-        for (var d=0; d < devices.length; d++) {
-          expect(devices[d].getInfo(WebCL.CL_DEVICE_AVAILABLE)).toEqual(true);
-        }
-      }
-    });
   });
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCLPlatform -- signature check + static functionality
+  // 
   describe("WebCLPlatform", function() {
+
     it("must have all specified functions", function() {
-      var plat = WebCL.getPlatforms()[0];
+      var plat = WebCLPlatform.prototype;
       for (var funcName in expectedFunctions.WebCLPlatform) {
         if (expectedFunctions.WebCLPlatform[funcName] === true) {
           expect(plat).toHaveFunction(funcName);
@@ -128,18 +113,51 @@ describe("WebCL", function() {
     });
 
     xit("must not have functions that have been removed", function() {
-      var plat = WebCL.getPlatforms()[0];
+      var plat = WebCLPlatform.prototype;
       for (var funcName in expectedFunctions.WebCLPlatform) {
         if (expectedFunctions.WebCLPlatform[funcName] === false) {
           expect(plat).not.toHaveFunction(funcName);
         }
       }
     });
+
+    it("must have at least one instance", function() {
+      expect(WebCL.getPlatforms().length).toBeGreaterThan(0);
+    });
+
+    it("must support the standard getInfo queries", function() {
+      var plats = WebCL.getPlatforms();
+      function checkInfo() {
+        for (var i=0; i < plats.length; i++) {
+          var name = plats[i].getInfo(WebCL.PLATFORM_NAME)
+          var vendor = plats[i].getInfo(WebCL.PLATFORM_VENDOR)
+          var version = plats[i].getInfo(WebCL.PLATFORM_VERSION)
+          var profile = plats[i].getInfo(WebCL.PLATFORM_PROFILE)
+          var extensions = plats[i].getInfo(WebCL.PLATFORM_EXTENSIONS)
+          console.log("Platform["+i+"]:");
+          console.log("  name: " + name);
+          console.log("  vendor: " + vendor);
+          console.log("  version: " + version);
+          console.log("  profile: " + profile);
+          console.log("  extensions: " + extensions);
+          expect(name.length).toBeGreaterThan(0);
+          expect(vendor.length).toBeGreaterThan(0);
+          expect(version.length).toBeGreaterThan(0);
+          expect(profile.length).toBeGreaterThan(0);
+        }
+      };
+      expect(checkInfo).not.toThrow();
+    });
   });
 
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCLDevice -- signature check + static functionality
+  // 
   describe("WebCLDevice", function() {
+
     it("must have all specified functions", function() {
-      var device = WebCL.getPlatforms()[0].getDevices()[0];
+      var device = WebCLDevice.prototype;
       for (var funcName in expectedFunctions.WebCLDevice) {
         if (expectedFunctions.WebCLDevice[funcName] === true) {
           expect(device).toHaveFunction(funcName);
@@ -148,12 +166,56 @@ describe("WebCL", function() {
     });
 
     xit("must not have functions that have been removed", function() {
-      var device = WebCL.getPlatforms()[0].getDevices()[0];
+      var device = WebCLDevice.prototype;
       for (var funcName in expectedFunctions.WebCLDevice) {
         if (expectedFunctions.WebCLDevice[funcName] === false) {
           expect(device).not.toHaveFunction(funcName);
         }
       }
+    });
+
+    it("must have at least one instance on each Platform", function() {
+      var platforms = WebCL.getPlatforms();
+      for (var p=0; p < platforms.length; p++) {
+        expect(platforms[p].getDevices().length).toBeGreaterThan(0);
+      }
+    });
+
+    it("must not have any instances that are not actually available", function() {
+      var platforms = WebCL.getPlatforms();
+      for (var p=0; p < platforms.length; p++) {
+        var devices = platforms[p].getDevices();
+        for (var d=0; d < devices.length; d++) {
+          expect(devices[d].getInfo(WebCL.DEVICE_AVAILABLE)).toEqual(true);
+        }
+      }
+    });
+
+    it("must support the standard getInfo queries", function() {
+      var plats = WebCL.getPlatforms();
+      function checkInfo() {
+        for (var i=0; i < plats.length; i++) {
+          var devices = plats[i].getDevices();
+          for (var j=0; j < devices.length; j++) {
+            var name = devices[j].getInfo(WebCL.DEVICE_NAME)
+            var vendor = devices[j].getInfo(WebCL.DEVICE_VENDOR)
+            var version = devices[j].getInfo(WebCL.DEVICE_VERSION)
+            var profile = devices[j].getInfo(WebCL.DEVICE_PROFILE)
+            var extensions = devices[j].getInfo(WebCL.DEVICE_EXTENSIONS)
+            console.log("Platform["+i+"], Device["+j+"]:");
+            console.log("  name: " + name);
+            console.log("  vendor: " + vendor);
+            console.log("  version: " + version);
+            console.log("  profile: " + profile);
+            console.log("  extensions: " + extensions);
+            expect(name.length).toBeGreaterThan(0);
+            expect(vendor.length).toBeGreaterThan(0);
+            expect(version.length).toBeGreaterThan(0);
+            expect(profile.length).toBeGreaterThan(0);
+          }
+        }
+      };
+      expect(checkInfo).not.toThrow();
     });
   });
 
@@ -249,6 +311,7 @@ describe("WebCL", function() {
   // 
   describe("WebCLContext", function() {
 
+    var CTX = null;
     var cl = null;
 
     beforeEach(function() {
@@ -256,6 +319,10 @@ describe("WebCL", function() {
         console.log("WebCLContext test suite - beforeEach()");
         cl = new CL({ debug: true, cleanup: true });
       }
+    });
+
+    afterEach(function() {
+      cl.releaseAll();
     });
 
     function createContexts() {
@@ -458,7 +525,8 @@ describe("WebCL", function() {
         var src = cl.loadSource('kernels/argtypes.cl');
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var kernel = ctx.buildKernel({ source: src, opts: "-Werror" });
+          ctx.buildKernels({ source: src, opts: "-Werror" });
+          var kernel = ctx.getKernel('scalars');
           var queue = ctx.createCommandQueue();
           var resbuf = ctx.createBuffer({ size: 1 });
           function execute() {

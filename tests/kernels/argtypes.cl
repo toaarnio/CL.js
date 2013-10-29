@@ -45,6 +45,9 @@ kernel void scalars(global int* result,
     }
 }
 
+// result[0] = 0   if success
+// result[0] = -1  if error
+
 kernel void vectors(global int* result, float4 f) 
 {
   result[0] = -1; // assume error
