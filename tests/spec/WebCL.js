@@ -39,13 +39,13 @@ describe("WebCL", function() {
     expect(WebCL).toBeDefined();
   });
 
-  it("classes must be defined", function() {
+  it("must have all the expected classes", function() {
     for (var className in expectedClasses) {
       expect(window).toHaveFunction(className);
     }
   });
 
-  it("classes must have the expected functions", function() {
+  it("must have all the expected functions in each class", function() {
     for (var className in expectedClasses) {
       checkSignature(className);
     }
@@ -58,7 +58,7 @@ describe("WebCL", function() {
       expect(actualValue).toBeDefined();
       expect(actualValue).toEqual(expectedValue);
     }
-    });
+  });
 
   it("must not have error code enums that have been removed", function() {
     for (var enumName in removedErrorEnums) {
@@ -376,7 +376,6 @@ describe("WebCL", function() {
 
   var deviceInfoEnums = {
     DEVICE_TYPE                               : 0x1000,
-    DEVICE_VENDOR_ID                          : 0x1001,
     DEVICE_MAX_COMPUTE_UNITS                  : 0x1002,
     DEVICE_MAX_WORK_ITEM_DIMENSIONS           : 0x1003,
     DEVICE_MAX_WORK_GROUP_SIZE                : 0x1004,
@@ -387,7 +386,6 @@ describe("WebCL", function() {
     DEVICE_PREFERRED_VECTOR_WIDTH_LONG        : 0x1009,
     DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT       : 0x100A,
     //DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE      : 0x100B, // moved to extension
-    DEVICE_MAX_CLOCK_FREQUENCY                : 0x100C,
     DEVICE_ADDRESS_BITS                       : 0x100D,
     DEVICE_MAX_READ_IMAGE_ARGS                : 0x100E,
     DEVICE_MAX_WRITE_IMAGE_ARGS               : 0x100F,
@@ -429,6 +427,12 @@ describe("WebCL", function() {
     //DEVICE_HALF_FP_CONFIG                     : 0x1033, // moved to extension
     //DEVICE_PREFERRED_VECTOR_WIDTH_HALF        : 0x1034, // moved to extension
     DEVICE_HOST_UNIFIED_MEMORY                : 0x1035,
+    DEVICE_OPENCL_C_VERSION                   : 0x103D,
+  };
+
+  var optionalDeviceInfoEnums = {
+    DEVICE_VENDOR_ID                          : 0x1001,
+    DEVICE_MAX_CLOCK_FREQUENCY                : 0x100C,
     DEVICE_NATIVE_VECTOR_WIDTH_CHAR           : 0x1036,
     DEVICE_NATIVE_VECTOR_WIDTH_SHORT          : 0x1037,
     DEVICE_NATIVE_VECTOR_WIDTH_INT            : 0x1038,
@@ -436,7 +440,10 @@ describe("WebCL", function() {
     DEVICE_NATIVE_VECTOR_WIDTH_FLOAT          : 0x103A,
     //DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE         : 0x103B, // moved to extension
     //DEVICE_NATIVE_VECTOR_WIDTH_HALF           : 0x103C, // moved to extension
-    DEVICE_OPENCL_C_VERSION                   : 0x103D,
+  };
+
+  var removedDeviceInfoEnums = {
+    DEVICE_MIN_DATA_TYPE_ALIGN_SIZE          : 0x101A,
   };
 
   var extensionEnums = {
@@ -445,13 +452,9 @@ describe("WebCL", function() {
     DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE     : 0x100B,
     DEVICE_DOUBLE_FP_CONFIG                  : 0x1032,
     DEVICE_HALF_FP_CONFIG                    : 0x1033,
-    DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE     : 0x1034,
+    DEVICE_PREFERRED_VECTOR_WIDTH_HALF       : 0x1034,
     DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE        : 0x103B,
     DEVICE_NATIVE_VECTOR_WIDTH_HALF          : 0x103C,
-  };
-
-  var removedDeviceInfoEnums = {
-    DEVICE_MIN_DATA_TYPE_ALIGN_SIZE          : 0x101A,
   };
 
 });
