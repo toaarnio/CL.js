@@ -388,14 +388,19 @@ describe("Dynamic functionality", function() {
   //
   //
   // 
-  describe("Performance", function() {
+  xdescribe("Performance", function() {
 
     var CTX = null;
-    var cl = new CL({ debug: false, cleanup: false });
+    var cl = null; 
 
     beforeEach(function() {
-      for (var d=0; d < cl.devices.length; d++) {
-        cl.createContext({ device: cl.devices[d] });
+      if (!cl) {
+        console.log("WebCLProgram test suite - beforeEach()");
+        cl = new CL({ debug: true, cleanup: false });
+        sobel = cl.loadSource('kernels/sobel.cl');
+        for (var d=0; d < cl.devices.length; d++) {
+          cl.createContext({ device: cl.devices[d] });
+        }
       }
       CTX = cl.devices[SELECTED_DEVICE].contexts[0];
     });

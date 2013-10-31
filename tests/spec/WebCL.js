@@ -83,7 +83,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLPlatform -- signature check + static functionality
+  // WebCLPlatform
   // 
   describe("WebCLPlatform", function() {
 
@@ -112,7 +112,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLDevice -- signature check + static functionality
+  // WebCLDevice
   // 
   describe("WebCLDevice", function() {
 
@@ -139,12 +139,13 @@ describe("WebCL", function() {
         var devices = plats[i].getDevices();
         for (var j=0; j < devices.length; j++, deviceIndex++) {
           console.info("Platform["+i+"], Device["+j+"]:");
-          expect(function() { checkInfo(deviceIndex) }).not.toThrow();
+          expect(function() { checkInfo(deviceInfoEnums, deviceIndex) }).not.toThrow();
+          expect(function() { checkInfo(removedDeviceInfoEnums, deviceIndex) }).toThrow();
         }
       }
-      function checkInfo(deviceIndex) {
-        for (var enumName in deviceInfoEnums) {
-          var enumVal = WebCL[enumName];
+      function checkInfo(enumList, deviceIndex) {
+        for (var enumName in enumList) {
+          var enumVal = enumList[enumName];
           var property = devices[j].getInfo(enumVal)
           console.info("  "+enumName+": "+property);
           expect(property).not.toBeNull();
