@@ -134,24 +134,110 @@ describe("WebCL", function() {
     });
 
     it("must support the standard getInfo queries", function() {
-      var plats = WebCL.getPlatforms();
-      for (var i=0, deviceIndex=0; i < plats.length; i++) {
-        var devices = plats[i].getDevices();
-        for (var j=0; j < devices.length; j++, deviceIndex++) {
-          console.info("Platform["+i+"], Device["+j+"]:");
-          expect(function() { checkInfo(deviceInfoEnums, deviceIndex) }).not.toThrow();
-          expect(function() { checkInfo(removedDeviceInfoEnums, deviceIndex) }).toThrow();
-        }
-      }
-      function checkInfo(enumList, deviceIndex) {
+      forEachDevice(function(device, deviceIndex) {
+        //console.info("Device["+deviceIndex+"]:");
+        expect(function() { checkInfo(deviceInfoEnums, device) }).not.toThrow();
+        expect(function() { checkInfo(removedDeviceInfoEnums, device) }).toThrow();
+      });
+      function checkInfo(enumList, device) {
         for (var enumName in enumList) {
           var enumVal = enumList[enumName];
-          var property = devices[j].getInfo(enumVal)
+          var property = device.getInfo(enumVal)
+          //console.info("  "+enumName+": "+property);
+          expect(property).not.toBeNull();
+        }
+      };
+    });
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCLContext
+  // 
+
+  describe("WebCLContext", function() {
+
+    it("must be able to create a Context on any Device", function() {
+      forEachDevice(function(device) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        expect(typeof ctx).toBe('object');
+        expect(ctx instanceof WebCLContext).toBeTruthy();
+        ctx.release();
+      });
+    });
+
+    it("must support the standard getInfo queries", function() {
+      forEachDevice(function(device, deviceIndex) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        expect(function() { checkInfo(contextInfoEnums, ctx) }).not.toThrow();
+        expect(function() { checkInfo(removedContextInfoEnums, ctx) }).toThrow();
+      });
+      function checkInfo(enumList, ctx) {
+        for (var enumName in enumList) {
+          var enumVal = enumList[enumName];
+          var property = ctx.getInfo(enumVal)
           console.info("  "+enumName+": "+property);
           expect(property).not.toBeNull();
         }
       };
     });
+
+    it("must be able to create a CommandQueue", function() {
+      forEachDevice(function(device) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        function createValidQueues() {
+          var queue1 = ctx.createCommandQueue();            // default
+          var queue2 = ctx.createCommandQueue(null);        // default
+          var queue3 = ctx.createCommandQueue(device);      // default
+          var queue4 = ctx.createCommandQueue(device, 0);   // default
+          var queue5 = ctx.createCommandQueue(device, 0x1); // out-of-order
+          var queue6 = ctx.createCommandQueue(device, 0x2); // profiling
+          var queue7 = ctx.createCommandQueue(device, 0x3); // combined
+          expect(queue1 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue2 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue3 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue4 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue5 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue6 instanceof WebCLCommandQueue).toBeTruthy();
+          expect(queue7 instanceof WebCLCommandQueue).toBeTruthy();
+          queue1.release();
+          queue2.release();
+          queue3.release();
+          queue4.release();
+          queue5.release();
+          queue6.release();
+          queue7.release();
+        };
+        try {
+          createValidQueues();
+        } catch (e) {
+          console.log(e.name, e.msg);
+        }
+        //expect(createValidQueues).not.toThrow();
+        ctx.release();
+      });
+    });
+
+    it("must not create a CommandQueue with invalid properties", function() {
+      forEachDevice(function(device) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        expect(function() { ctx.createCommandQueue("foo"); }).toThrow();
+        expect(function() { ctx.createCommandQueue(device, 0x4); }).toThrow();
+        expect(function() { ctx.createCommandQueue(device, []); }).toThrow();
+        expect(function() { ctx.createCommandQueue(device, [0xff]); }).toThrow();
+        expect(function() { ctx.createCommandQueue(device, device); }).toThrow();
+        ctx.release();
+      });
+    });
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCLCommandQueue
+  // 
+
+  describe("WebCLCommandQueue", function() {
+
   });
 
   //////////////////////////////////////////////////////////////
@@ -170,6 +256,16 @@ describe("WebCL", function() {
       },
     });
   });
+
+  function forEachDevice(callback) {
+    var plats = WebCL.getPlatforms();
+    for (var i=0, deviceIndex=0; i < plats.length; i++) {
+      var devices = plats[i].getDevices();
+      for (var j=0; j < devices.length; j++, deviceIndex++) {
+        callback(devices[j], deviceIndex, plats[i], i);
+      }
+    }
+  };
 
   function checkSignature(className) {
     for (var funcName in expectedFunctions[className]) {
@@ -458,4 +554,14 @@ describe("WebCL", function() {
     DEVICE_NATIVE_VECTOR_WIDTH_HALF          : 0x103C,
   };
 
+  var contextInfoEnums = {
+    CONTEXT_DEVICES      : 0x1081,
+    CONTEXT_PROPERTIES   : 0x1082,
+    CONTEXT_NUM_DEVICES  : 0x1083,
+    CONTEXT_PLATFORM     : 0x1084,
+  };
+
+  var removedContextInfoEnums = {
+    CONTEXT_REFERENCE_COUNT : 0x1080,
+  };
 });

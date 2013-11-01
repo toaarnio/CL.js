@@ -29,7 +29,7 @@ jasmine.Env.prototype.failFast = function() {
 // Uncomment the following line to enable the "fail fast" mode.
 //jasmine.getEnv().failFast();
 
-describe("Dynamic functionality", function() {
+xdescribe("Dynamic functionality", function() {
 
   var SELECTED_DEVICE = 2;
 
