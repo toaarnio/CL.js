@@ -29,7 +29,7 @@ jasmine.Env.prototype.failFast = function() {
 // Uncomment the following line to enable the "fail fast" mode.
 //jasmine.getEnv().failFast();
 
-xdescribe("Dynamic functionality", function() {
+describe("Dynamic functionality", function() {
 
   var SELECTED_DEVICE = 2;
 
@@ -334,7 +334,6 @@ xdescribe("Dynamic functionality", function() {
         var ui = new Uint32Array([0xffffffff]);
         var ul = new Uint32Array([0xffffffff, 0]);
         var f32 = new Float32Array([1.0]);
-        var f64 = new Float64Array([1.0]);
 
         var src = cl.loadSource('kernels/argtypes.cl');
         for (var d=0; d < cl.devices.length; d++) {
@@ -344,7 +343,7 @@ xdescribe("Dynamic functionality", function() {
           var queue = ctx.createCommandQueue();
           var resbuf = ctx.createBuffer({ size: 1 });
           function execute() {
-            kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32, f64);
+            kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
             queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
             queue.enqueueReadBuffer(resbuf, result);
             queue.peer.finish();
@@ -356,6 +355,14 @@ xdescribe("Dynamic functionality", function() {
 
       it("Must support all kernel argument vector types", function() {
         var result = new Int8Array([127]);
+        var c = new Int8Array([-1, -1, -1, -1]);
+        var s = new Int16Array([-1, -1, -1, -1]);
+        var i = new Int32Array([-1, -1, -1, -1]);
+        var l = new Int32Array([-1, 0, -1, 0, -1, 0, -1, ]);
+        var uc = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
+        var us = new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]);
+        var ui = new Uint32Array([0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]);
+        var ul = new Uint32Array([0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0]);
         var f32 = new Float32Array([1.0, 1.0, 1.0, 1.0]);
         var src = cl.loadSource('kernels/argtypes.cl');
         for (var d=0; d < cl.devices.length; d++) {
@@ -365,9 +372,7 @@ xdescribe("Dynamic functionality", function() {
           var queue = ctx.createCommandQueue();
           var resbuf = ctx.createBuffer({ size: 1 });
           function execute() {
-            //kernel.setArgs(resbuf, f32);
-            kernel.peer.setKernelArg(0, resbuf);
-            kernel.peer.setKernelArg(1, f32, WebCL.types.FLOAT_V);
+            kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
             queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
             queue.enqueueReadBuffer(resbuf, result);
             queue.peer.finish();
