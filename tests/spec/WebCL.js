@@ -46,6 +46,7 @@ describe("WebCL", function() {
   });
 
   it("must have all the expected functions in each class", function() {
+    checkSignature('WebCL');
     for (var className in expectedClasses) {
       checkSignature(className);
     }
@@ -213,12 +214,12 @@ describe("WebCL", function() {
         } catch (e) {
           console.log(e.name, e.msg);
         }
-        //expect(createValidQueues).not.toThrow();
+        expect(createValidQueues).not.toThrow();
         ctx.release();
       });
     });
 
-    it("must not create a CommandQueue with invalid properties", function() {
+    it("must not allow creating a CommandQueue with invalid properties", function() {
       forEachDevice(function(device) {
         var ctx = WebCL.createContext({ devices: [device] });
         expect(function() { ctx.createCommandQueue("foo"); }).toThrow();

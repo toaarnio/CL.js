@@ -33,6 +33,16 @@ describe("Dynamic functionality", function() {
 
   var SELECTED_DEVICE = 2;
 
+  var globals = {};
+
+  beforeEach(function() {
+    this.addMatchers({
+      toEvaluateToTrue: function() {
+        return eval(this.actual);
+      },
+    });
+  });
+
   //////////////////////////////////////////////////////////////////////////////
   //
   //
@@ -82,19 +92,20 @@ describe("Dynamic functionality", function() {
       var testFunc = function() {
         var uri = 'kernels/rng.cl';
         var src = cl.loadSource(uri);
-        var prog1 = ctx.build({ source: src });
-        var kernel1 = ctx.buildKernel({ source: src });
-        var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
-        var kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
-        var kernel3 = ctx.buildKernel(src);
-        var kernel4 = ctx.buildKernel(uri);
-        var kernel5 = ctx.buildKernels(uri)[0];
-        expect(prog1.peer instanceof WebCLProgram).toBeTruthy();
-        expect(kernel1.peer instanceof WebCLKernel).toBeTruthy();
-        expect(kernel2.peer instanceof WebCLKernel).toBeTruthy();
-        expect(kernel3.peer instanceof WebCLKernel).toBeTruthy();
-        expect(kernel4.peer instanceof WebCLKernel).toBeTruthy();
-        expect(kernel5.peer instanceof WebCLKernel).toBeTruthy();
+        globals.program = ctx.buildProgram({ source: src });
+        globals.kernel1 = ctx.buildKernel({ source: src });
+        globals.kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
+        globals.kernel3 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
+        globals.kernel4 = ctx.buildKernel(src);
+        globals.kernel5 = ctx.buildKernel(uri);
+        globals.kernel6 = ctx.buildKernels(uri)[0];
+        expect('globals.program instanceof WebCLProgram').toEvaluateToTrue();
+        expect('globals.kernel1 instanceof WebCLKernel').toEvaluateToTrue();
+        expect('globals.kernel2 instanceof WebCLKernel').toEvaluateToTrue();
+        expect('globals.kernel3 instanceof WebCLKernel').toEvaluateToTrue();
+        expect('globals.kernel4 instanceof WebCLKernel').toEvaluateToTrue();
+        expect('globals.kernel5 instanceof WebCLKernel').toEvaluateToTrue();
+        expect('globals.kernel6 instanceof WebCLKernel').toEvaluateToTrue();
       } 
       expect(testFunc).not.toThrow();
       CL.releaseAll();
@@ -107,10 +118,10 @@ describe("Dynamic functionality", function() {
         if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
           var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
           var src = cl.loadSource(uri);
-          var prog1 = ctx.build({ ptx: src });
-          var kernel1 = ctx.buildKernel({ ptx: src });
+          var prog1 = ctx.buildProgram({ ptx: src });
+          globals.kernel1 = ctx.buildKernel({ ptx: src });
           expect(prog1.peer instanceof WebCLProgram).toBeTruthy();
-          expect(kernel1.peer instanceof WebCLKernel).toBeTruthy();
+          expect('globals.kernel1 instanceof WebCLKernel').toBeTruthy();
         }
       }
       expect(testFunc).not.toThrow();
@@ -131,7 +142,7 @@ describe("Dynamic functionality", function() {
     beforeEach(function() {
       if (!cl) {
         console.log("WebCLContext test suite - beforeEach()");
-        cl = new CL({ debug: true, cleanup: true });
+        cl = new CL({ debug: false, cleanup: true });
       }
     });
 
@@ -237,7 +248,7 @@ describe("Dynamic functionality", function() {
       beforeEach(function() {
         if (!cl) {
           console.log("WebCLProgram test suite - beforeEach()");
-          cl = new CL({ debug: true, cleanup: false });
+          cl = new CL({ debug: false, cleanup: false });
           sobel = cl.loadSource('kernels/sobel.cl');
           for (var d=0; d < cl.devices.length; d++) {
             cl.createContext({ device: cl.devices[d] });
@@ -255,7 +266,7 @@ describe("Dynamic functionality", function() {
       it("Must be able to build a Program from source", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.build({ source: sobel });
+          var program = ctx.buildProgram({ source: sobel });
           expect(program.built).toEqual(true);
         }
       });
@@ -265,7 +276,7 @@ describe("Dynamic functionality", function() {
       xit("Must not crash when querying Program binary sizes", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.build({ source: sobel });
+          var program = ctx.buildProgram({ source: sobel });
           function getBinaries() {
 	          var sizes = program.peer.getInfo(CL.PROGRAM_BINARY_SIZES);
 	          console.log("Size of binary executable in bytes: ", sizes[0]);
@@ -280,7 +291,7 @@ describe("Dynamic functionality", function() {
       xit("Must not be able to get Program binaries", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
-          var program = ctx.build({ source: sobel });
+          var program = ctx.buildProgram({ source: sobel });
           function getBinaries() {
             return program.peer.getInfo(CL.PROGRAM_BINARIES);
           }
@@ -292,7 +303,7 @@ describe("Dynamic functionality", function() {
         for (var d=0; d < cl.devices.length; d++) {
           var ctx = cl.devices[d].contexts[0];
           var kernel = ctx.buildKernel({ source: sobel });
-          expect(typeof kernel.peer).toBe('object');
+          expect(kernel instanceof WebCLKernel).toBeTruthy();
         }
       });
 
@@ -313,10 +324,9 @@ describe("Dynamic functionality", function() {
           var kernel = ctx.buildKernel({ source: src, opts: "-Werror" });
           var queue = ctx.createCommandQueue();
           var buffer1M = ctx.createBuffer({ size: 1024*1024 });
-          kernel.setArgTypes('BUFFER');
-          kernel.setArgs(buffer1M);
+          kernel.setArg(0, buffer1M);
           function execute() {
-            queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [results.length], [], []);
+            queue.peer.enqueueNDRangeKernel(kernel, 1, [], [results.length], [], []);
             queue.peer.finish();
           }
           expect(execute).not.toThrow();
@@ -344,7 +354,7 @@ describe("Dynamic functionality", function() {
           var resbuf = ctx.createBuffer({ size: 1 });
           function execute() {
             kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
-            queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
+            queue.peer.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
             queue.enqueueReadBuffer(resbuf, result);
             queue.peer.finish();
           }
@@ -373,7 +383,7 @@ describe("Dynamic functionality", function() {
           var resbuf = ctx.createBuffer({ size: 1 });
           function execute() {
             kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
-            queue.peer.enqueueNDRangeKernel(kernel.peer, 1, [], [1], [], []);
+            queue.peer.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
             queue.enqueueReadBuffer(resbuf, result);
             queue.peer.finish();
           }
@@ -401,7 +411,7 @@ describe("Dynamic functionality", function() {
     beforeEach(function() {
       if (!cl) {
         console.log("WebCLProgram test suite - beforeEach()");
-        cl = new CL({ debug: true, cleanup: false });
+        cl = new CL({ debug: false, cleanup: false });
         sobel = cl.loadSource('kernels/sobel.cl');
         for (var d=0; d < cl.devices.length; d++) {
           cl.createContext({ device: cl.devices[d] });

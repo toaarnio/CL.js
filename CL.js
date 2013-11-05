@@ -118,6 +118,49 @@ var CL = (function() {
     }
   };
 
+  // #### CL.getFromArray ####
+  //
+  // Retrieves the object by the given `name` from `theArray`.
+  // Returns `null` if no object by that name is found.
+  //
+  CL.getFromArray = function(theArray, name) {
+    for (var i=0; i < theArray.length; i++) {
+      if (theArray[i].name === name) {
+        return theArray[i];
+      }
+    }
+    return null;
+  };
+
+  // #### CL.clearArray ####
+  //
+  // Loops through all CL objects in `theArray` and releases their
+  // native resources.  Will fail if `theArray` is not an Array or
+  // contains anything else than CL.js objects.
+  //
+  CL.clearArray = function(theArray) {
+    for (var i=0; i < theArray.length; i++) {
+      theArray[i].releaseAll();
+      delete theArray[i];
+    }
+    theArray.length = 0;
+  };
+
+  // #### CL.removeFromArray ####
+  //
+  // Removes the object by the given `name` from `theArray`, and
+  // releases the native CL resources of that object.
+  //
+  CL.removeFromArray = function(theArray, name) {
+    for (var i=0; i < theArray.length; i++) {
+      var theObject = theArray[i];
+      if (theObject.name === name) {
+        theObject.releaseAll();
+        theArray.splice(i, 1);
+      }
+    }
+  };
+
   // ### CL.releaseAll() ###
   //
   // Invalidates all WebCL objects and releases the memory and other
@@ -331,7 +374,7 @@ var CL = (function() {
     return platforms;
 
     function deviceFactory(platform) {
-      var devices = platform.getDevices(CL.DEVICE_TYPE_ALL);
+      var devices = platform.getDevices();
       for (var d=0; d < devices.length; d++) {
         var isAvailable = devices[d].getInfo(CL.DEVICE_AVAILABLE);
         var isCompilerAvailable = devices[d].getInfo(CL.DEVICE_COMPILER_AVAILABLE);
@@ -343,12 +386,6 @@ var CL = (function() {
           device.version = device.getInfo(CL.DEVICE_VERSION);
           device.vendor = device.getInfo(CL.DEVICE_VENDOR);
           device.contexts = [];
-          device.getContext = function(name) {
-            return IMP.getFromArray(this.contexts, name);
-          };
-          device.releaseAll = function() {
-            IMP.clearArray(this.contexts);
-          };
           var type = device.getInfo(CL.DEVICE_TYPE);
           if (type === CL.DEVICE_TYPE_CPU) {
             device.type = 'CPU';
@@ -382,7 +419,7 @@ var CL = (function() {
       parameters = parameters || {};
       var name = parameters.name || self.queues.length.toString();
       var queue = new CommandQueue();
-      var props = IMP.PROFILE===true ? [CL.QUEUE_PROFILING_ENABLE] : null;
+      var props = IMP.PROFILE===true ? CL.QUEUE_PROFILING_ENABLE : null;
       queue.peer = self.peer.createCommandQueue(self.device, props);
       queue.context = self;
       queue.name = name;
@@ -401,7 +438,7 @@ var CL = (function() {
       buffer.context = self;
       buffer.name = name;
       buffer.releaseAll = function() { this.release(); };
-      IMP.removeFromArray(self.buffers, name);
+      CL.removeFromArray(self.buffers, name);
       self.buffers.push(buffer);
       return buffer;
     };
@@ -421,34 +458,51 @@ var CL = (function() {
       image.context = self;
       image.name = name;
       image.releaseAll = function() { this.release(); };
-      IMP.removeFromArray(self.images, name);
+      CL.removeFromArray(self.images, name);
       self.images.push(image);
       return image;
     };
 
-    this.build = function(parameters) {
-      var program = new Program();
+    this.buildProgram = function(parameters) {
+      var program = this.createProgram(parameters);
+      program.build(parameters);
+      return program;
+    };
+
+    this.createProgram = function(parameters) {
+      var props = {};
       switch (typeof(parameters)) {
       case 'object':
-        program.uri = parameters.uri;
-        program.source = parameters.source || CL.loadSource(program.uri);
-        program.ptx = parameters.ptx;
+        props.uri = parameters.uri;
+        props.source = parameters.source || CL.loadSource(parameters.uri);
+        props.ptx = parameters.ptx;
         break;
       case 'string':
-        program.uri = parameters.endsWith(".cl") ? parameters : null;
-        program.source = CL.loadSource(program.uri) || parameters;
+        props.uri = parameters.endsWith(".cl") ? parameters : null;
+        props.source = CL.loadSource(props.uri) || parameters;
         break;
       default:
-        throw "CL.Context.build: Expected String or Object";
+        throw "CL.Context.createProgram: Expected String or Object";
       }
+      var program = null;
+      if (props.source || props.ptx) {
+        if (props.source) {
+          program = self.peer.createProgram(props.source);
+          program.source = props.source;
+        } else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
+          program = self.peer.createProgramWithBinary([self.device], [props.ptx]);
+          program.ptx = props.ptx;
+        }
+      }
+      program.platform = self.platform;
+      program.device = self.device;
       program.context = self;
-      program.build(parameters);
       self.programs.push(program);
       return program;
     };
 
     this.buildKernels = function(parameters) {
-      var program = self.build(parameters);
+      var program = self.buildProgram(parameters);
       return program.kernels;
     };
 
@@ -457,11 +511,11 @@ var CL = (function() {
     };
 
     this.getBuffer = function(name) {
-      return IMP.getFromArray(self.buffers, name);
+      return CL.getFromArray(self.buffers, name);
     };
 
     this.getImage = function(name) {
-      return IMP.getFromArray(self.images, name);
+      return CL.getFromArray(self.images, name);
     };
 
     this.getKernel = function(name) {
@@ -475,18 +529,16 @@ var CL = (function() {
     };
 
     this.getQueue = function(name) {
-      return IMP.getFromArray(self.queues, name);
+      return CL.getFromArray(self.queues, name);
     };
 
     this.releaseAll = function() {
-      if (self.peer.release) {
-        console.log("Context.releaseAll");
-        IMP.clearArray(self.programs);
-        IMP.clearArray(self.queues);
-        IMP.clearArray(self.buffers);
-        self.peer.release();
-        self.peer = "Context.peer: de-initialized";
-      }
+      console.log("Context.releaseAll");
+      CL.clearArray(self.programs);
+      CL.clearArray(self.queues);
+      CL.clearArray(self.buffers);
+      self.peer.release();
+      self.peer = "Context.peer: de-initialized";
     };
 
     IMP.addCleanupWrapper(this, "createCommandQueue", "Context");
@@ -564,256 +616,6 @@ var CL = (function() {
     IMP.addCleanupWrapper(this, "finish", "CommandQueue");
   };
 
-  // ### Program ###
-  // Instantiated by `Context.build()`
-  //
-  function Program(parameters) {
-
-    this.peer = "Program.peer: not yet initialized";
-    this.built = false;
-    this.compilerOpts = null;
-    this.compilerDefs = null;
-    this.kernels = [];
-    this.kernel = null;
-    this.context = null;
-    this.source = null;
-    this.uri = null;
-
-    this.build = function(parameters) {
-      parameters = parameters || {};
-      self.compilerOpts = parameters.opts || "";
-      self.compilerDefs = "";
-      for (var d in parameters.defines) {
-        self.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
-      }
-      if (self.context && (self.source || self.ptx)) {
-        try {
-          if (self.source) {
-            self.peer = self.context.peer.createProgram(self.source);
-          } else if (self.ptx) {  // hidden feature: NVIDIA PTX binary support
-            self.peer = self.context.peer.createProgramWithBinary([self.context.device], [self.ptx]);
-          }
-          self.peer.build([self.context.device], self.compilerDefs + self.compilerOpts);
-          if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
-            self.kernels = kernelFactory();
-            if (self.kernels.length > 0) {
-              self.kernel = self.kernels[0];
-              self.built = true;
-            }
-          }
-          if (!self.built) {
-            throw "Kernel compilation failed, although the compiler claims it succeeded.";
-          }
-        } catch(e) {
-          if (self.peer.getProgramBuildInfo) {
-            var info = this.getBuildLog();
-          } else {
-            var info = "Failed to create a WebCLProgram object";
-          }
-          console.log("[" + self.context.platform.vendor + "]", e, info);
-          throw e + info;
-        }
-      } else {
-        var msg = "Cannot build program: missing ";
-        msg += self.context? "kernel source code" : "CL.Context";
-        throw msg;
-      }
-    };
-
-    this.getBuildStatus = function() {
-      var status = self.peer.getBuildInfo(self.context.device, CL.PROGRAM_BUILD_STATUS);
-      return status;
-    };
-    
-    this.getBuildLog = function() {
-      var log = self.peer.getBuildInfo(self.context.device, CL.PROGRAM_BUILD_LOG);
-      return log;
-    };
-
-    this.getKernel = function(name) {
-      return IMP.getFromArray(self.kernels, name);
-    };
-
-    this.releaseAll = function() {
-      if (self.peer.release) {
-        self.peer.release();
-        self.peer = "Program.peer: de-initialized";
-        IMP.clearArray(self.kernels);
-      }
-    };
-
-    // ### Implementation ###
-
-    var self = this;
-    init(parameters);
-    IMP.addCleanupWrapper(this, "build", "Program");
-    IMP.addCleanupWrapper(this, "getBuildStatus", "Program");
-    IMP.addCleanupWrapper(this, "getBuildLog", "Program");
-
-    function init(parameters) {
-    };
-
-    function kernelFactory() {
-      var clKernels = [];
-      var context = self.context;
-      var device = self.context.device;
-      var kernels = self.peer.createKernelsInProgram();
-      for (var k=0; k < kernels.length; k++) {
-        clKernels[k] = new Kernel();
-        clKernels[k].peer = kernels[k];
-        clKernels[k].program = self;
-        clKernels[k].context = context;
-        clKernels[k].device = device;
-        clKernels[k].name = kernels[k].getInfo(CL.KERNEL_FUNCTION_NAME);
-        clKernels[k].numArgs = kernels[k].getInfo(CL.KERNEL_NUM_ARGS);
-        clKernels[k].workGroupSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_WORK_GROUP_SIZE);
-        clKernels[k].localMemSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_LOCAL_MEM_SIZE);
-        clKernels[k].privateMemSize = kernels[k].getWorkGroupInfo(device, CL.KERNEL_PRIVATE_MEM_SIZE);
-      }
-      return clKernels;
-    };
-  };
-
-  // ### Kernel ###
-  // Instantiated by `Program.build()`
-  //
-  function Kernel(parameters) {
-    this.peer = "Kernel.peer: not yet initialized";
-    this.name = "uninitialized";
-    this.numArgs = -1;
-    this.argTypes = [];
-    this.argSizes = [];
-    this.workGroupSize = -1;
-    this.localMemSize = -1;
-    this.privateMemSize = -1;
-    this.program = null;
-    this.context = null;
-    this.device = null;
-
-    // Convenience wrapper for setArg that allows passing ordinary
-    // JavaScript numbers and arrays, instead of having to wrap an
-    // ArrayBufferView around everything.
-    //
-    // TODO: Not working yet. Need information about argument types
-    // expected by the kernel, otherwise can't choose the right kind
-    // of ArrayBufferView.
-    //
-    this.setArgDevel = function(index, value) {
-
-      var isNumber = (typeof value === 'number');
-      var isNamedObject = (typeof value === 'string');
-      var isArray = (value instanceof Array);
-      var isMemObject = (value instanceof WebCLMemoryObject);
-      var isTypedArray = (value.buffer instanceof ArrayBuffer);
-      var is8bit = isTypedArray && (value.BYTES_PER_ELEMENT === 1);
-      var is16bit = isTypedArray && (value.BYTES_PER_ELEMENT === 2);
-      var is32bit = isTypedArray && (value.BYTES_PER_ELEMENT === 4);
-      var isFloat32 = value instanceof Float32Array;
-      var isInteger = !isFloat32;
-      
-      var buffer = new ArrayBuffer(8*16);          // enough space for a double16
-
-      // CASE 1: Single scalar (not yet supported)
-      //
-      if (isNumber) {
-        var byteView = new Int8Array(buffer, 0, 1);
-        var ubyteView = new Uint8Array(buffer, 0, 1);
-        var shortView = new Int16Array(buffer, 0, 1);
-        var ushortView = new Uint16Array(buffer, 0, 1);
-        var intView = new Int32Array(buffer, 0, 1);
-        var uintView = new Uint32Array(buffer, 0, 1);
-        var longView = new Uint32Array(buffer, 0, 2);
-        var ulongView = new Uint32Array(buffer, 0, 2);
-        var floatView = new Float32Array(buffer, 0, 1);
-        var doubleView = new Float64Array(buffer, 0, 1);
-        var typemap = {
-          'BYTE' : byteView,
-          'UBYTE' : ubyteView,
-          'SHORT' : shortView,
-          'USHORT' : ushortView,
-          'INT' : intView,
-          'UINT' : uintView,
-          'LONG' : longView,
-          'ULONG' : ulongView,
-          'LOCAL' : uintView,
-          'IMAGE' : null,
-          'BUFFER' : null,
-        };
-      }
-
-      // CASE 2: Typed Array (not yet supported)
-      //
-      if (isTypedArray) {
-      }
-
-      // CASE 3: WebCLBuffer or WebCLImage
-      //
-      if (isMemObject || isNamedObject) {
-        this.setArg(index, value);
-      }
-    };
-
-    // Convenience wrapper for setArg that allows passing
-    // WebCLMemoryObjects by either name or reference.
-    //
-    this.setArg = function(index, value) {
-      var isMemObject = (value instanceof WebCLMemoryObject);
-      var isNamedObject = (typeof(value) === 'string');
-      if (isNamedObject || isMemObject) {
-        var memObject = isMemObject && value;
-        memObject = memObject || self.context.getBuffer(value);
-        memObject = memObject || self.context.getImage(value);
-        value = memObject;
-      }
-      self.peer.setArg(index, value);
-    };
-
-    // Convenience wrapper for setArg that allows setting all
-    // arguments of a kernel at once. This also allows passing
-    // WebCLMemoryObjects by either name or reference.
-    //
-    this.setArgs = function() {
-      for (var i=0; i < arguments.length; i++) {
-        self.setArg(i, arguments[i]);
-      }
-    };
-
-    this.setArgTypes = function() {
-      for (var i=0; i < arguments.length; i++) {
-        self.argTypes[i] = arguments[i];
-      }
-    };
-
-    this.setArgSizes = function() {
-      for (var i=0; i < arguments.length; i++) {
-        self.argSizes[i] = arguments[i];
-      }
-    };
-
-    this.getInfo = function(paramName) {
-      return this.peer.getInfo(paramName);
-    };
-
-    this.getWorkGroupInfo = function(device, paramName) {
-      return this.peer.getWorkGroupInfo(device, paramName);
-    };
-
-    this.releaseAll = function() {
-      if (self.peer.release) {
-        self.peer.release();
-        self.peer = "Kernel.peer: de-initialized";
-      }
-    };
-
-    // ### Implementation ###
-
-    var self = this;
-
-    IMP.addCleanupWrapper(this, "setArg", "Kernel");
-    IMP.addCleanupWrapper(this, "getInfo", "Kernel");
-    IMP.addCleanupWrapper(this, "getWorkGroupInfo", "Kernel");
-  };
-
   function Imp() {
 
     // The `DEBUG` flag enables/disables debug messages on the
@@ -831,49 +633,6 @@ var CL = (function() {
     // enabled.
     //
     this.PROFILE = true;
-
-    // #### clearArray ####
-    //
-    // Loops through all CL objects in `theArray` and releases their
-    // native resources.  Will fail if `theArray` is not an Array or
-    // contains anything else than CL.js objects.
-    //
-    this.clearArray = function(theArray) {
-      for (var i=0; i < theArray.length; i++) {
-        theArray[i].releaseAll();
-        delete theArray[i];
-      }
-      theArray.length = 0;
-    };
-
-    // #### removeFromArray ####
-    //
-    // Removes the object by the given `name` from `theArray`, and
-    // releases the native CL resources of that object.
-    //
-    this.removeFromArray = function(theArray, name) {
-      for (var i=0; i < theArray.length; i++) {
-        var theObject = theArray[i];
-        if (theObject.name === name) {
-          theObject.releaseAll();
-          theArray.splice(i, 1);
-        }
-      }
-    };
-
-    // #### getFromArray ####
-    //
-    // Retrieves the object by the given `name` from `theArray`.
-    // Returns `null` if no object by that name is found.
-    //
-    this.getFromArray = function(theArray, name) {
-      for (var i=0; i < theArray.length; i++) {
-        if (theArray[i].name === name) {
-          return theArray[i];
-        }
-      }
-      return null;
-    };
 
     // #### addCleanupWrappers ####
     //
@@ -945,6 +704,171 @@ var CL = (function() {
 
     var self = this;
     
+  };
+
+})();
+
+
+// ### WebCLProgram ###
+// Instantiated by `WebCLContext.createProgram()`
+//
+
+(function augmentWebCL() {
+  deleteDeprecated();
+  augmentWebCLPlatform();
+  augmentWebCLDevice();
+  augmentWebCLProgram();
+  augmentWebCLKernel();
+
+  function deleteDeprecated() {
+    delete WebCL.getPlatformIDs;
+    delete WebCL.createContextFromType;
+    delete WebCLPlatform.prototype.getPlatformInfo;
+    delete WebCLPlatform.prototype.getDeviceIDs;
+    delete WebCLDevice.prototype.getDeviceInfo;
+    delete WebCLContext.prototype.createImage2D;
+    delete WebCLContext.prototype.createImage3D;
+    delete WebCLContext.prototype.createProgramWithSource;
+    delete WebCLCommandQueue.prototype.enqueueTask;
+    delete WebCLProgram.prototype.buildProgram;
+    delete WebCLProgram.prototype.getProgramInfo;
+    delete WebCLProgram.prototype.getProgramBuildInfo;
+  }
+
+  // ### WebCLPlatform ###
+  //
+  function augmentWebCLPlatform() {
+    WebCLPlatform.prototype.vendor = null; 
+    WebCLPlatform.prototype.devices = null; 
+    WebCLPlatform.prototype.contexts = null; 
+  };
+
+  // ### WebCLDevice ###
+  //
+  function augmentWebCLDevice() {
+    WebCLDevice.prototype.id = null;
+    WebCLDevice.prototype.name = null;
+    WebCLDevice.prototype.type = null;
+    WebCLDevice.prototype.vendor = null;
+    WebCLDevice.prototype.version = null;
+    WebCLDevice.prototype.isAvailable = false;
+    WebCLDevice.prototype.platform = null;
+    WebCLDevice.prototype.contexts = null;
+    WebCLDevice.prototype.getContext = function(name) { return CL.getFromArray(this.contexts, name); };
+    WebCLDevice.prototype.releaseAll = function() { CL.clearArray(this.contexts); };
+  };
+
+  // ### WebCLProgram ###
+  //
+  function augmentWebCLProgram() {
+    WebCLProgram.prototype.built = false;
+    WebCLProgram.prototype.source = null;
+    WebCLProgram.prototype.compilerOpts = null;
+    WebCLProgram.prototype.compilerDefs = null;
+    WebCLProgram.prototype.kernels = null;
+    WebCLProgram.prototype.context = null;
+    WebCLProgram.prototype.device = null;
+    WebCLProgram.prototype.platform = null;
+
+    WebCLProgram.prototype._build = WebCLProgram.prototype.build;
+    WebCLProgram.prototype.build = function(parameters) {
+      var self = this;
+      this.compilerOpts = parameters.opts || "";
+      this.compilerDefs = "";
+      for (var d in parameters.defines) {
+        this.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
+      }
+      try {
+        this._build([this.device], this.compilerDefs + this.compilerOpts);
+        if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
+          this.kernels = kernelFactory();
+          if (this.kernels.length > 0) {
+            this.kernel = this.kernels[0];
+            this.built = true;
+          }
+        }
+        if (!this.built) {
+          throw "Kernel compilation failed, although the compiler claims it succeeded.";
+        }
+      } catch(e) {
+        var info = this.getBuildLog();
+        console.log("[" + this.platform.vendor + "]", e, info);
+        throw e + info;
+      }
+
+      function kernelFactory() {
+        var kernels = self.createKernelsInProgram();
+        for (var k=0; k < kernels.length; k++) {
+          kernels[k].program = self;
+          kernels[k].context = self.context;
+          kernels[k].device = self.device;
+          kernels[k].platform = self.platform;
+          kernels[k].name = kernels[k].getInfo(CL.KERNEL_FUNCTION_NAME);
+          kernels[k].numArgs = kernels[k].getInfo(CL.KERNEL_NUM_ARGS);
+          kernels[k].workGroupSize = kernels[k].getWorkGroupInfo(self.device, CL.KERNEL_WORK_GROUP_SIZE);
+          kernels[k].localMemSize = kernels[k].getWorkGroupInfo(self.device, CL.KERNEL_LOCAL_MEM_SIZE);
+          kernels[k].privateMemSize = kernels[k].getWorkGroupInfo(self.device, CL.KERNEL_PRIVATE_MEM_SIZE);
+        }
+        return kernels;
+      };
+    };
+
+    WebCLProgram.prototype.getBuildStatus = function() {
+      var status = this.getBuildInfo(this.device, CL.PROGRAM_BUILD_STATUS);
+      return status;
+    };
+
+    WebCLProgram.prototype.getBuildLog = function() {
+      var log = this.getBuildInfo(this.device, CL.PROGRAM_BUILD_LOG);
+      return log;
+    };
+
+    WebCLProgram.prototype.getKernel = function(name) {
+      return CL.getFromArray(this.kernels, name);
+    };
+
+    WebCLProgram.prototype.releaseAll = function() {
+      CL.clearArray(this.kernels);
+      this.release();
+    };
+  };
+
+  // ### WebCLKernel ###
+  //
+  function augmentWebCLKernel() {
+    WebCLKernel.prototype.name = null;
+    WebCLKernel.prototype.numArgs = 0;
+    WebCLKernel.prototype.workGroupSize = 0;
+    WebCLKernel.prototype.localMemSize = 0;
+    WebCLKernel.prototype.privateMemSize = 0;
+    WebCLKernel.prototype.program = null;
+    WebCLKernel.prototype.context = null;
+    WebCLKernel.prototype.device = null;
+    WebCLKernel.prototype.platform = null;
+    WebCLKernel.prototype.releaseAll = WebCLKernel.prototype.release;
+
+    WebCLKernel.prototype._setArg = WebCLKernel.prototype.setArg;
+    WebCLKernel.prototype.setArg = function(index, value) {
+      var isMemObject = (value instanceof WebCLMemoryObject);
+      var isNamedObject = (typeof(value) === 'string');
+      if (isNamedObject || isMemObject) {
+        var memObject = isMemObject && value;
+        memObject = memObject || this.context.getBuffer(value);
+        memObject = memObject || this.context.getImage(value);
+        value = memObject;
+      }
+      this._setArg(index, value);
+    };
+
+    // Convenience wrapper for setArg that allows setting all
+    // arguments of a kernel at once. This also allows passing
+    // WebCLMemoryObjects by either name or reference.
+    //
+    WebCLKernel.prototype.setArgs = function() {
+      for (var i=0; i < arguments.length; i++) {
+        this.setArg(i, arguments[i]);
+      }
+    };
   };
 
 })();
