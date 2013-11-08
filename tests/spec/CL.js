@@ -31,7 +31,7 @@ jasmine.Env.prototype.failFast = function() {
 
 describe("Dynamic functionality", function() {
 
-  var SELECTED_DEVICE = 2;
+  var SELECTED_DEVICE = 1;
 
   var globals = {};
 
@@ -403,24 +403,25 @@ describe("Dynamic functionality", function() {
   //
   //
   // 
-  xdescribe("Performance", function() {
+  describe("Performance", function() {
 
     var CTX = null;
     var cl = null; 
 
     beforeEach(function() {
+      console.log("WebCL Performance test suite - beforeEach()");
       if (!cl) {
-        console.log("WebCLProgram test suite - beforeEach()");
         cl = new CL({ debug: false, cleanup: false });
         sobel = cl.loadSource('kernels/sobel.cl');
-        for (var d=0; d < cl.devices.length; d++) {
-          cl.createContext({ device: cl.devices[d] });
-        }
+      }
+      for (var d=0; d < cl.devices.length; d++) {
+        cl.createContext({ device: cl.devices[d] });
       }
       CTX = cl.devices[SELECTED_DEVICE].contexts[0];
     });
 
     afterEach(function() {
+      console.log("WebCL Performance test suite - afterEach()");
       cl.releaseAll();
     });
 
@@ -459,7 +460,7 @@ describe("Dynamic functionality", function() {
         queue.finish();
         success = true;
       } catch (e) {
-        //console.log(e);
+        console.log(e);
       }
       var t2 = Date.now();
       var stats = {
@@ -476,40 +477,38 @@ describe("Dynamic functionality", function() {
     // 
     describe("Math built-ins", function() {
       
-      var BUFFERSIZE = 16*1024*1024;
+      var BUFFERSIZE = 1e6;
 
       beforeEach(function() {
+        console.log("WebCL Performance Math built-ins - beforeEach(): CTX.peer = ", CTX.peer);
         CTX.createBuffer({ size: BUFFERSIZE, name: 'buffer16M' });
         CTX.buildKernels('kernels/builtin-math.cl');
         CTX.createCommandQueue();
       });
 
       afterEach(function() {
-        CL.releaseAll();
+        console.log("WebCL Performance Math built-ins - afterEach()");
+        //CTX.releaseAll();
       });
       
       it("hypot() should be faster than a custom implementation", function() {
         var faster = CTX.getKernel('hypotBuiltin');
         var slower = CTX.getKernel('hypotCustom');
-        faster.setArgTypes('BUFFER');
         faster.setArgs('buffer16M');
-        slower.setArgTypes('BUFFER');
         slower.setArgs('buffer16M');
         var SAD = validate(faster, slower, BUFFERSIZE/4);
         expect(SAD).toBeCloseTo(0, 2);
-        var iter = calibrate(faster, BUFFERSIZE/4);
-        var msecFaster = exec(faster, BUFFERSIZE/4, iter).msec;
-        var msecSlower = exec(slower, BUFFERSIZE/4, iter).msec;
-        console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
-        expect(msecFaster).toBeLessThan(msecSlower);
+        //var iter = calibrate(faster, BUFFERSIZE/4);
+        var msecFaster = exec(faster, BUFFERSIZE/4, 1000).msec;
+        //var msecSlower = exec(slower, BUFFERSIZE/4, 100).msec;
+        //console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
+        //expect(msecFaster).toBeLessThan(msecSlower);
       });
 
       it("sincos() should be faster than sin() + cos()", function() {
         var faster = CTX.getKernel('sinCosCombined');
         var slower = CTX.getKernel('sinCosSeparate');
-        faster.setArgTypes('BUFFER');
         faster.setArgs('buffer16M');
-        slower.setArgTypes('BUFFER');
         slower.setArgs('buffer16M');
         var SAD = validate(faster, slower, BUFFERSIZE/4);
         expect(SAD).toBeCloseTo(0, 5);
@@ -545,7 +544,6 @@ describe("Dynamic functionality", function() {
           var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
           var buffer16M = CTX.createBuffer({ size: BUFFERSIZE });
           var queue = CTX.createCommandQueue();
-          memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
           memProtectOn.setArgs(buffer16M, new Uint32Array([WORKSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
           var slowdown = (msJavaScript / msProtected).toFixed(2);
@@ -610,9 +608,7 @@ describe("Dynamic functionality", function() {
           var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
-          memProtectOff.setArgTypes('BUFFER', 'UINT');
           memProtectOff.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          memProtectOn.setArgTypes('BUFFER', 'ULONG', 'UINT');
           memProtectOn.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
           var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
@@ -634,13 +630,9 @@ describe("Dynamic functionality", function() {
           var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer16M.size / 4;
           var WORKSIZE = BUFFERSIZE;
-          kernel1.setArgTypes('BUFFER', 'UINT');
           kernel1.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          kernel2.setArgTypes('BUFFER', 'UINT');
           kernel2.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          kernel1s.setArgTypes('BUFFER', 'ULONG', 'UINT');
           kernel1s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
-          kernel2s.setArgTypes('BUFFER', 'ULONG', 'UINT');
           kernel2s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
           var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
           var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
@@ -672,9 +664,7 @@ describe("Dynamic functionality", function() {
         var bufferOutput = CTX.createBuffer({ size: 16*WORKSIZE });
         var bufferConst = CTX.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
         var queue = CTX.createCommandQueue();
-        memProtectOff.setArgTypes('BUFFER', 'BUFFER', 'BUFFER', 'LOCAL');
         memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, new Uint32Array([GROUPSIZE*16]));
-        memProtectOn.setArgTypes('BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'BUFFER', 'ULONG', 'LOCAL', 'ULONG');
         memProtectOn.setArgs(bufferInput, new Uint32Array([WORKSIZE, 0]),
                              bufferOutput, new Uint32Array([WORKSIZE, 0]),
                              bufferConst, new Uint32Array([WORKSIZE, 0]),
@@ -698,9 +688,7 @@ describe("Dynamic functionality", function() {
           var queue = CTX.createCommandQueue();
           var BUFFERSIZE = buffer.size / 4;
           var WORKSIZE = BUFFERSIZE / defs.KERNEL_LOOP_COUNT;
-          kernelOriginal.setArgTypes('BUFFER', 'UINT', 'BUFFER', 'UINT');
           kernelOriginal.setArgs(buffer, new Uint32Array([BUFFERSIZE]), buffer, new Uint32Array([BUFFERSIZE]));
-          kernelProtected.setArgTypes('BUFFER', 'UINT', 'UINT', 'BUFFER', 'UINT', 'UINT');
           kernelProtected.setArgs(buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]), 
                                   buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]));
           var msecOriginal = exec(kernelOriginal, WORKSIZE, 4).msec;

@@ -155,7 +155,6 @@ describe("WebCL", function() {
   //
   // WebCLContext
   // 
-
   describe("WebCLContext", function() {
 
     it("must be able to create a Context on any Device", function() {
@@ -186,6 +185,8 @@ describe("WebCL", function() {
     it("must be able to create a CommandQueue", function() {
       forEachDevice(function(device) {
         var ctx = WebCL.createContext({ devices: [device] });
+        console.log("Context refcount: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
+        expect(ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT)).toEqual(1);
         function createValidQueues() {
           var queue1 = ctx.createCommandQueue();            // default
           var queue2 = ctx.createCommandQueue(null);        // default
@@ -194,6 +195,7 @@ describe("WebCL", function() {
           var queue5 = ctx.createCommandQueue(device, 0x1); // out-of-order
           var queue6 = ctx.createCommandQueue(device, 0x2); // profiling
           var queue7 = ctx.createCommandQueue(device, 0x3); // combined
+          console.log("Context refcount: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
           expect(queue1 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue2 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue3 instanceof WebCLCommandQueue).toBeTruthy();
@@ -201,6 +203,9 @@ describe("WebCL", function() {
           expect(queue5 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue6 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue7 instanceof WebCLCommandQueue).toBeTruthy();
+          console.log("Context refcount before: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
+          //ctx.release();
+          console.log("Context refcount after: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
           queue1.release();
           queue2.release();
           queue3.release();
@@ -208,6 +213,7 @@ describe("WebCL", function() {
           queue5.release();
           queue6.release();
           queue7.release();
+          console.log("Context refcount finally: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
         };
         try {
           createValidQueues();
@@ -236,9 +242,30 @@ describe("WebCL", function() {
   //
   // WebCLCommandQueue
   // 
-
   describe("WebCLCommandQueue", function() {
 
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Crash tests
+  // 
+  describe("Crash tests", function() {
+    it("must not not crash on calling release() too many times", function()  {
+      forEachDevice(function(device, deviceIndex) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        ctx.release();
+        expect(function() { ctx.release() }).not.toThrow();
+      });
+    });
+
+    xit("must not not crash when trying to use an object that has been released", function() {
+      forEachDevice(function(device, deviceIndex) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        ctx.release();
+        expect(ctx.getInfo(WebCL.CONTEXT_NUM_DEVICES)).not.toThrow();
+      });
+    });
   });
 
   //////////////////////////////////////////////////////////////
@@ -259,11 +286,14 @@ describe("WebCL", function() {
   });
 
   function forEachDevice(callback) {
+    var SELECTED_DEVICES = [0];
     var plats = WebCL.getPlatforms();
     for (var i=0, deviceIndex=0; i < plats.length; i++) {
       var devices = plats[i].getDevices();
       for (var j=0; j < devices.length; j++, deviceIndex++) {
-        callback(devices[j], deviceIndex, plats[i], i);
+        if (SELECTED_DEVICES.indexOf(deviceIndex) >= 0) {
+          callback(devices[j], deviceIndex, plats[i], i);
+        }
       }
     }
   };
@@ -556,10 +586,11 @@ describe("WebCL", function() {
   };
 
   var contextInfoEnums = {
+    CONTEXT_REFERENCE_COUNT   : 0x1080,
     CONTEXT_DEVICES      : 0x1081,
     CONTEXT_PROPERTIES   : 0x1082,
     CONTEXT_NUM_DEVICES  : 0x1083,
-    CONTEXT_PLATFORM     : 0x1084,
+    //CONTEXT_PLATFORM     : 0x1084,
   };
 
   var removedContextInfoEnums = {

@@ -104,13 +104,13 @@ var CL = (function() {
     return validURI ? xhrLoad(uri, callback) : null;
   };
 
-  // ### CL.enumToString() ###
+  // ### CL.enumString() ###
   //
   // Returns the human-readable string representation of the given
-  // WebCL enumerated value. For example, `CL.enumToString(-10)` will
+  // WebCL enumerated value. For example, `CL.enumString(-10)` will
   // return the string `"IMAGE_FORMAT_NOT_SUPPORTED"`.
   //
-  CL.enumToString = function(enumValue) {
+  CL.enumString = function(enumValue) {
     for (var e in CL) {
       if (CL[e] === enumValue) {
         return e;
@@ -134,16 +134,20 @@ var CL = (function() {
 
   // #### CL.clearArray ####
   //
-  // Loops through all CL objects in `theArray` and releases their
-  // native resources.  Will fail if `theArray` is not an Array or
-  // contains anything else than CL.js objects.
+  // Removes all CL objects in `theArray` and releases their native
+  // resources.  Will fail if `theArray` is not an Array or contains
+  // anything else than CL.js objects.
   //
   CL.clearArray = function(theArray) {
-    for (var i=0; i < theArray.length; i++) {
-      theArray[i].releaseAll();
-      delete theArray[i];
+    if (theArray && theArray.length > 0) {
+      for (var i=0; i < theArray.length; i++) {
+        if (theArray[i] && theArray[i].releaseAll) {
+          theArray[i].releaseAll();
+          delete theArray[i];
+        }
+      }
+      theArray.length = 0;
     }
-    theArray.length = 0;
   };
 
   // #### CL.removeFromArray ####
@@ -214,6 +218,10 @@ var CL = (function() {
   //
   API.devices = [];
 
+  // ### contexts ###
+  //
+  API.contexts = [];
+
   // ### createContext() ###
   // 
   // Creates a new Context for the given `device` and assigns the
@@ -260,6 +268,12 @@ var CL = (function() {
   // ### releaseAll() ###
   // 
   API.releaseAll = function() {
+    console.log("API.releaseAll");
+    for (var c=0; c < this.contexts.length; c++) {
+      this.contexts[c].releaseAll();
+      delete this.contexts[c];
+    }
+    this.contexts.length = 0;
     for (var d=0; d < this.devices.length; d++) {
       this.devices[d].releaseAll();
     }
@@ -558,7 +572,7 @@ var CL = (function() {
     this.enqueueKernel = function(kernel, globalws, localws) {
       var localws = localws || [];
       var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
-      var event = self.peer.enqueueNDRangeKernel(kernel.peer, globalws.length, [], globalws, localws, []);
+      var event = self.peer.enqueueNDRangeKernel(kernel, globalws.length, [], globalws, localws, []);
       events.push(event);
       return event;
     };
