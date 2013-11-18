@@ -45,10 +45,17 @@ describe("WebCL", function() {
     }
   });
 
-  it("must have all the expected functions in each class", function() {
-    checkSignature('WebCL');
+  it("must have all the expected member functions", function() {
+    checkSignature('WebCL', true);
     for (var className in expectedClasses) {
-      checkSignature(className);
+      checkSignature(className, true);
+    }
+  });
+
+  it("must not have any disallowed member functions", function() {
+    checkSignature('WebCL', false);
+    for (var className in expectedClasses) {
+      checkSignature(className, false);
     }
   });
 
@@ -76,7 +83,7 @@ describe("WebCL", function() {
     }
   });
 
-  it("must not have device info enums that have been removed", function() {
+  it("must not have any disallowed device info enums", function() {
     for (var enumName in removedDeviceInfoEnums) {
       expect('WebCL').not.toHaveProperty(enumName);
     }
@@ -169,24 +176,24 @@ describe("WebCL", function() {
     it("must support the standard getInfo queries", function() {
       forEachDevice(function(device, deviceIndex) {
         var ctx = WebCL.createContext({ devices: [device] });
-        expect(function() { checkInfo(contextInfoEnums, ctx) }).not.toThrow();
-        expect(function() { checkInfo(removedContextInfoEnums, ctx) }).toThrow();
-      });
-      function checkInfo(enumList, ctx) {
-        for (var enumName in enumList) {
-          var enumVal = enumList[enumName];
-          var property = ctx.getInfo(enumVal)
-          console.info("  "+enumName+": "+property);
-          expect(property).not.toBeNull();
+        for (var enumName in contextInfoEnums) {
+          expect(ctx).toSupportInfoEnum(enumName);
         }
-      };
+      });
+    });
+
+    it("must not support any disallowed getInfo queries", function() {
+      forEachDevice(function(device, deviceIndex) {
+        var ctx = WebCL.createContext({ devices: [device] });
+        for (var enumName in removedContextInfoEnums) {
+          expect(ctx).not.toSupportInfoEnum(enumName);
+        }
+      });
     });
 
     it("must be able to create a CommandQueue", function() {
       forEachDevice(function(device) {
         var ctx = WebCL.createContext({ devices: [device] });
-        console.log("Context refcount: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
-        expect(ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT)).toEqual(1);
         function createValidQueues() {
           var queue1 = ctx.createCommandQueue();            // default
           var queue2 = ctx.createCommandQueue(null);        // default
@@ -195,7 +202,6 @@ describe("WebCL", function() {
           var queue5 = ctx.createCommandQueue(device, 0x1); // out-of-order
           var queue6 = ctx.createCommandQueue(device, 0x2); // profiling
           var queue7 = ctx.createCommandQueue(device, 0x3); // combined
-          console.log("Context refcount: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
           expect(queue1 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue2 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue3 instanceof WebCLCommandQueue).toBeTruthy();
@@ -203,9 +209,6 @@ describe("WebCL", function() {
           expect(queue5 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue6 instanceof WebCLCommandQueue).toBeTruthy();
           expect(queue7 instanceof WebCLCommandQueue).toBeTruthy();
-          console.log("Context refcount before: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
-          //ctx.release();
-          console.log("Context refcount after: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
           queue1.release();
           queue2.release();
           queue3.release();
@@ -213,13 +216,7 @@ describe("WebCL", function() {
           queue5.release();
           queue6.release();
           queue7.release();
-          console.log("Context refcount finally: ", ctx.getInfo(WebCL.CONTEXT_REFERENCE_COUNT));
         };
-        try {
-          createValidQueues();
-        } catch (e) {
-          console.log(e.name, e.msg);
-        }
         expect(createValidQueues).not.toThrow();
         ctx.release();
       });
@@ -228,11 +225,11 @@ describe("WebCL", function() {
     it("must not allow creating a CommandQueue with invalid properties", function() {
       forEachDevice(function(device) {
         var ctx = WebCL.createContext({ devices: [device] });
-        expect(function() { ctx.createCommandQueue("foo"); }).toThrow();
-        expect(function() { ctx.createCommandQueue(device, 0x4); }).toThrow();
-        expect(function() { ctx.createCommandQueue(device, []); }).toThrow();
-        expect(function() { ctx.createCommandQueue(device, [0xff]); }).toThrow();
-        expect(function() { ctx.createCommandQueue(device, device); }).toThrow();
+        expect('ctx.createCommandQueue("foo")').toThrow();
+        expect('ctx.createCommandQueue(device, 0x4)').toThrow();
+        expect('ctx.createCommandQueue(device, [])').toThrow();
+        expect('ctx.createCommandQueue(device, [0xff])').toThrow();
+        expect('ctx.createCommandQueue(device, device)').toThrow();
         ctx.release();
       });
     });
@@ -251,19 +248,19 @@ describe("WebCL", function() {
   // Crash tests
   // 
   describe("Crash tests", function() {
-    it("must not not crash on calling release() too many times", function()  {
+
+    it("must not not crash or throw when calling release() too many times", function()  {
       forEachDevice(function(device, deviceIndex) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        ctx.release();
-        expect(function() { ctx.release() }).not.toThrow();
+        ctx = WebCL.createContext({ devices: [device] });
+        expect('ctx.release()').not.toThrow();
       });
     });
 
-    xit("must not not crash when trying to use an object that has been released", function() {
+    it("must throw when trying to use an object that has been released", function() {
       forEachDevice(function(device, deviceIndex) {
-        var ctx = WebCL.createContext({ devices: [device] });
+        ctx = WebCL.createContext({ devices: [device] });
         ctx.release();
-        expect(ctx.getInfo(WebCL.CONTEXT_NUM_DEVICES)).not.toThrow();
+        expect('ctx.getInfo(WebCL.CONTEXT_NUM_DEVICES)').toThrow();
       });
     });
   });
@@ -272,6 +269,20 @@ describe("WebCL", function() {
 
   beforeEach(function() {
     this.addMatchers({
+      toThrow: function() {
+        if (typeof(this.actual) === 'string') {
+          var sourceStr = this.actual;
+          this.actual = Function(this.actual);
+          var asExpected = jasmine.Matchers.prototype.toThrow.call(this);
+          var not = this.isNot ? "not " : "";
+          this.message = function() { 
+            return "Expected '" + sourceStr + "' " + not + "to throw an exception."
+          }
+          return asExpected;
+        } else {
+          return jasmine.Matchers.prototype.toThrow.call(this);
+        }
+      },
       toHaveProperty: function(name) {
         var obj = typeof(this.actual) === "string" ? window[this.actual] : this.actual;
         return (obj[name] !== undefined);
@@ -281,6 +292,14 @@ describe("WebCL", function() {
         var exists = obj && typeof(obj[name]) === 'function';
         exists = exists || (obj && obj.prototype && typeof(obj.prototype[name]) === 'function');
         return exists;
+      },
+      toSupportInfoEnum: function(name) {
+        var obj = this.actual;
+        var val = undefined;
+        try {
+          val = obj.getInfo(WebCL[name]);
+        } catch (e) {}
+        return (val !== undefined);
       },
     });
   });
@@ -298,12 +317,12 @@ describe("WebCL", function() {
     }
   };
 
-  function checkSignature(className) {
+  function checkSignature(className, checkExisting) {
     for (var funcName in expectedFunctions[className]) {
-      if (expectedFunctions[className][funcName] === true) {
+      if (checkExisting && expectedFunctions[className][funcName] === true) {
         expect(className).toHaveFunction(funcName);
       }
-      if (expectedFunctions[className][funcName] === false) {
+      if (!checkExisting && expectedFunctions[className][funcName] === false) {
         expect(className).not.toHaveFunction(funcName);
       }
     }
@@ -586,14 +605,12 @@ describe("WebCL", function() {
   };
 
   var contextInfoEnums = {
-    CONTEXT_REFERENCE_COUNT   : 0x1080,
     CONTEXT_DEVICES      : 0x1081,
     CONTEXT_PROPERTIES   : 0x1082,
     CONTEXT_NUM_DEVICES  : 0x1083,
-    //CONTEXT_PLATFORM     : 0x1084,
   };
 
   var removedContextInfoEnums = {
-    CONTEXT_REFERENCE_COUNT : 0x1080,
+    //CONTEXT_REFERENCE_COUNT : 0x1080,  // uncomment when un-implemented
   };
 });
