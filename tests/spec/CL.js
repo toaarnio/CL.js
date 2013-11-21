@@ -60,9 +60,19 @@ describe("Dynamic functionality", function() {
       var ctx3 = cl2.createContext({ name: 'bar' });
       var ctx4 = cl2.getContext('bar');
       expect(ctx3).toEqual(ctx4);
+      CL.releaseAll();
+    });
 
-      expect(cl1.getContext('foo')).not.toBeNull();
-      expect(cl2.getContext('foo')).toBeNull();
+    it("instances must be independent", function() {
+      var cl1 = new CL({ debug: false, cleanup: false });
+      var cl2 = new CL({ debug: false, cleanup: false });
+      var ctx1 = cl1.createContext({ name: 'foo' });
+      var ctx2 = cl2.createContext({ name: 'foo' });
+      var cl1foo = cl1.getContext('foo');
+      var cl2foo = cl2.getContext('foo');
+      expect(ctx1).toEqual(cl1foo);
+      expect(ctx2).toEqual(cl2foo);
+      expect(cl1foo).not.toEqual(cl2foo);
       CL.releaseAll();
     });
 

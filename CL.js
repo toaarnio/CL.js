@@ -201,7 +201,7 @@ var CL = (function() {
 
   // ### platforms ###
   //
-  // Contains all WebCL Platforms that are available in this system,
+  // An array of all WebCLPlatforms that are present in this system,
   // as discovered at construction.  Each Platform typically contains
   // one or more Devices, but it can also happen that all devices on a
   // particular platform are powered down or otherwise not available.
@@ -210,7 +210,7 @@ var CL = (function() {
 
   // ### devices ###
   //
-  // Contains all WebCL Devices that are actually available in this
+  // An array of all WebCLDevices that are actually available in this
   // system, as discovered at construction.  Each Device belongs to
   // exactly one Platform. Devices that are powered down or otherwise
   // not available are not included. Applications should be prepared
@@ -219,6 +219,9 @@ var CL = (function() {
   API.devices = [];
 
   // ### contexts ###
+  //
+  // An array of all WebCLContexts that have been created by this
+  // particular CL instance.
   //
   API.contexts = [];
 
@@ -314,10 +317,7 @@ var CL = (function() {
     if (window.webCL) {
       cloneAPI.platforms.length = 0;
       cloneAPI.devices.length = 0;
-      cloneAPI.platforms = platformFactory();
-      for (var p=0; p < cloneAPI.platforms.length; p++) {
-        cloneAPI.devices = cloneAPI.devices.concat(cloneAPI.platforms[p].devices);
-      }
+      deviceFactory(cloneAPI.platforms, cloneAPI.devices);
       if (IMP.CLEANUP) {
         instances.push(cloneAPI);  // add to the queue of to-be-cleaned-up CL instances
       }
@@ -329,6 +329,39 @@ var CL = (function() {
     };
 
     return cloneAPI;
+  };
+
+  function deviceFactory(platforms, devices) {
+    var numGPU = 0;
+    var numCPU = 0;
+    WebCL.getPlatforms().forEach(function(platform) {
+      platforms.push(platform);
+      platform.vendor = platform.getInfo(CL.PLATFORM_VENDOR);
+      platform.devices = [];
+      platform.contexts = [];
+      platform.getDevices().forEach(function(device) {
+        var isAvailable = device.getInfo(CL.DEVICE_AVAILABLE);
+        var isCompilerAvailable = device.getInfo(CL.DEVICE_COMPILER_AVAILABLE);
+        if (isAvailable && isCompilerAvailable) {
+          device.isAvailable = true;
+          device.platform = platform;
+          device.name = device.getInfo(CL.DEVICE_NAME);
+          device.version = device.getInfo(CL.DEVICE_VERSION);
+          device.vendor = device.getInfo(CL.DEVICE_VENDOR);
+          device.contexts = [];
+          var type = device.getInfo(CL.DEVICE_TYPE);
+          if (type === CL.DEVICE_TYPE_CPU) {
+            device.type = 'CPU';
+            device.id = 'CPU' + (numCPU++);
+          } else {
+            device.type = 'GPU';
+            device.id = 'GPU' + (numGPU++);
+          }
+          platform.devices.push(device);
+          devices.push(device);
+        }
+      });
+    });
   };
 
   function addEnums(theObject) {
@@ -351,7 +384,6 @@ var CL = (function() {
         }
       };
     }
-
     try {
       xhr.open("GET", uri + "?id="+ Math.random(), useAsync);
       xhr.send(null);
@@ -374,46 +406,6 @@ var CL = (function() {
       }
     }
     return true;
-  };
-
-  function platformFactory() {
-    var numGPU = 0;
-    var numCPU = 0;
-    var platforms = WebCL.getPlatforms();
-    for (var p=0; p < platforms.length; p++) {
-      platforms[p].vendor = platforms[p].getInfo(CL.PLATFORM_VENDOR);
-      platforms[p].devices = deviceFactory(platforms[p]);
-      platforms[p].contexts = [];
-    }
-    return platforms;
-
-    function deviceFactory(platform) {
-      var devices = platform.getDevices();
-      for (var d=0; d < devices.length; d++) {
-        var isAvailable = devices[d].getInfo(CL.DEVICE_AVAILABLE);
-        var isCompilerAvailable = devices[d].getInfo(CL.DEVICE_COMPILER_AVAILABLE);
-        if (isAvailable && isCompilerAvailable) {
-          var device = devices[d];
-          device.isAvailable = true;
-          device.platform = platform;
-          device.name = device.getInfo(CL.DEVICE_NAME);
-          device.version = device.getInfo(CL.DEVICE_VERSION);
-          device.vendor = device.getInfo(CL.DEVICE_VENDOR);
-          device.contexts = [];
-          var type = device.getInfo(CL.DEVICE_TYPE);
-          if (type === CL.DEVICE_TYPE_CPU) {
-            device.type = 'CPU';
-            device.id = 'CPU' + (numCPU+1);
-            numCPU++;
-          } else {
-            device.type = 'GPU';
-            device.id = 'GPU' + (numGPU+1);
-            numGPU++;
-          }
-        }
-      }
-      return devices;
-    };
   };
 
   // ### Context ###
