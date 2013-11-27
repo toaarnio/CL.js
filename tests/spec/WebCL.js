@@ -9,25 +9,8 @@
  * The Original Contributor of this Source Code Form is
  * Nokia Research Tampere (http://webcl.nokiaresearch.com).
  *
- * Author: Tomi Aarnio
+ * Author: Tomi Aarnio, 2013
  */
-
-// Augment Jasmine with a "fail fast" mode to stop running a test
-// suite immediately after the first failure.
-
-jasmine.Env.prototype.failFast = function() {
-  var env = this;
-  env.afterEach(function() {
-    if (!this.results().passed()) {
-      env.specFilter = function(spec) {
-        return false;
-      };
-    }
-  });
-};
-
-// Uncomment the following line to enable the "fail fast" mode.
-//jasmine.getEnv().failFast();
 
 //////////////////////////////////////////////////////////////////////////////
 //
@@ -389,6 +372,7 @@ describe("WebCL", function() {
       createImage3D : false,            // disallowed by WebCL
       createProgramWithSource : false,  // renamed to createProgram
       createProgramWithBinary : false,  // disallowed by WebCL
+      getContextInfo : false,           // renamed to getInfo
     },
 
     WebCLCommandQueue : {
@@ -412,13 +396,18 @@ describe("WebCL", function() {
       getInfo : true,
       release : true,
       enqueueTask : false,              // disallowed by WebCL
+      enqueueMapBuffer : false,         // disallowed by WebCL
+      enqueueMapImage : false,          // disallowed by WebCL
+      enqueueUnmapMemObject : false,    // disallowed by WebCL
+      getCommandQueueInfo : false,      // renamed to getInfo
     },
 
     WebCLMemoryObject : {
       getInfo : true,
       release : true,
       createSubBuffer : false,
-      getImageInfo: false,
+      getImageInfo: false,        // moved to WebCLImage
+      getMemObjectInfo : false,   // renamed to getInfo
     },
 
     WebCLBuffer : {
@@ -427,11 +416,13 @@ describe("WebCL", function() {
 
     WebCLImage : {
       getInfo : true,
+      getImageInfo: false,          // renamed to getInfo
     },
 
     WebCLSampler : {
       getInfo : true,
       release : true,
+      getSamplerInfo: false,        // renamed to getInfo
     },
 
     WebCLProgram : {
@@ -451,6 +442,10 @@ describe("WebCL", function() {
       getWorkGroupInfo : true,
       setArg : true,
       release : true,
+      setKernelArg : false,           // renamed to setArg
+      setKernelArgLocal : false,      // renamed to setArg
+      getKernelInfo: false,           // renamed to getInfo
+      getKernelWorkGroupInfo : false, // renamed to getWorkGroupInfo
     },
 
     WebCLEvent : {
@@ -458,11 +453,14 @@ describe("WebCL", function() {
       getProfilingInfo : true,
       setCallback : true,
       release : true,
-      setUserEventStatus : false,
+      setUserEventStatus : false,    // moved to WebCLUserEvent
+      getEventInfo : false,          // renamed to getInfo
+      getEventProfilingInfo : false, // renamed to getProfilingInfo
     },
 
     WebCLUserEvent : {
-      setUserEventStatus : true,
+      setStatus : true,
+      setUserEventStatus : false,    // renamed to setStatus
     },
   };
 
@@ -614,3 +612,21 @@ describe("WebCL", function() {
     //CONTEXT_REFERENCE_COUNT : 0x1080,  // uncomment when un-implemented
   };
 });
+
+// Augment Jasmine with a "fail fast" mode to stop running a test
+// suite immediately after the first failure.
+
+jasmine.Env.prototype.failFast = function() {
+  var env = this;
+  env.afterEach(function() {
+    if (!this.results().passed()) {
+      env.specFilter = function(spec) {
+        return false;
+      };
+    }
+  });
+};
+
+// Uncomment the following line to enable the "fail fast" mode.
+//jasmine.getEnv().failFast();
+
