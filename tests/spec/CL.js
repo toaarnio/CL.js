@@ -40,38 +40,30 @@ describe("Dynamic functionality", function() {
       expect(CL.INVALID_ARG_SIZE).toEqual(WebCL.INVALID_ARG_SIZE);
     });
 
-    it("must be able to create and retrieve Contexts", function() {
+    it("must have a unique ID on each instance", function() {
       var cl1 = new CL({ debug: false, cleanup: false });
       var cl2 = new CL({ debug: false, cleanup: false });
+      expect(cl1).not.toEqual(cl2);
+      cl2.releaseAll();
+      cl1.releaseAll();
+    });
 
+    it("must be able to create and retrieve a Context", function() {
+      var cl1 = new CL({ debug: false, cleanup: false });
       var ctx1 = cl1.createContext({ name: 'foo' });
       var ctx2 = cl1.getContext('foo');
       expect(ctx1).toEqual(ctx2);
-
-      var ctx3 = cl2.createContext({ name: 'bar' });
-      var ctx4 = cl2.getContext('bar');
-      expect(ctx3).toEqual(ctx4);
-
-      expect(ctx1).not.toEqual(ctx3);
-
       cl1.releaseAll();
-      cl2.releaseAll();
     });
 
-    it("instances must be independent", function() {
+    it("must have separate resources on each instance", function() {
       var cl1 = new CL({ debug: false, cleanup: false });
       var cl2 = new CL({ debug: false, cleanup: false });
-      var ctx1 = cl1.createContext({ name: 'foo' });
-      var ctx2 = cl2.createContext({ name: 'foo' });
-      var cl1foo = cl1.getContext('foo');
-      var cl2foo = cl2.getContext('foo');
-      expect(ctx1).not.toEqual(ctx2);
-      /*
-      expect(ctx1).toEqual(cl1foo);
-      expect(ctx2).toEqual(cl2foo);
-      expect(cl1foo).not.toEqual(cl2foo);*/
-      cl1.releaseAll();
+      cl1.createContext({ name: 'foo' });
+      cl2.createContext({ name: 'foo' });
+      expect(cl1.getContext('foo')).not.toEqual(cl2.getContext('foo'));
       cl2.releaseAll();
+      cl1.releaseAll();
     });
 
     it("must throw an exception on invalid input", function() {
@@ -100,7 +92,8 @@ describe("Dynamic functionality", function() {
       var testFunc = function() {
         var uri = 'kernels/rng.cl';
         var src = CL.loadSource(uri);
-        globals.program = ctx.buildProgram({ source: src });
+        globals.program = ctx.createProgram({ source: src });
+        globals.program.build();
         expect('globals.program instanceof WebCLProgram').toEvaluateToTrue();
         /*
         globals.kernel1 = ctx.buildKernel({ source: src });
@@ -170,62 +163,70 @@ describe("Dynamic functionality", function() {
       expect(CL.DEVICES.length).toBeGreaterThan(0);
     });
 
-    it("must be able to create a Context on default Device", function() {
-      for (var p=0; p < CL.PLATFORMS.length; p++) {
-        var plat = CL.PLATFORMS[p];
+    it("must be able to create a Context on any Platform", function() {
+      CL.PLATFORMS.forEach(function(plat) {
         var ctx = cl.createContext({ platform: plat });
-        expect(typeof ctx).toBe('object');
-        ctx.release();
-      }
+        expect(ctx instanceof WebCLContext).toBeTruthy();
+        ctx.release;
+      });
     });
 
     it("must be able to create a Context on any Device", function() {
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = cl.createContext({ device: CL.DEVICES[d] });
-        expect(typeof ctx).toBe('object');
+      CL.DEVICES.forEach(function(dev) {
+        var ctx = cl.createContext({ device: dev });
+        expect(ctx instanceof WebCLContext).toBeTruthy();
         ctx.release();
-      }
+      });
     });
 
     it("must be able to create a Context spanning all Devices on a Platform", function() {
-      for (var p=0; p < CL.PLATFORMS.length; p++) {
-        var plat = CL.PLATFORMS[p];
-        var devices = [];
-        for (var d=0; d < plat.devices.length; d++) {
-          devices.push(plat.devices[d]);
-        }
-        var ctx = cl.createContext({ devices: devices });
-        expect(typeof ctx).toBe('object');
+      CL.PLATFORMS.forEach(function(plat) {
+        var ctx = cl.createContext({ devices: plat.devices });
+        expect(ctx instanceof WebCLContext).toBeTruthy();
         ctx.release();
-      }
+      });
     });
 
     it("must be able to create a CommandQueue on any Device", function() {
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = cl.createContext({ device: CL.DEVICES[d] });
-        var queue = ctx.createCommandQueue(CL.DEVICES[d], null);
-        expect(typeof queue).toBe('object');
+      CL.DEVICES.forEach(function(dev) {
+        var ctx = cl.createContext({ device: dev });
+        var queue = ctx.createCommandQueue();
+        expect(queue instanceof WebCLCommandQueue).toBeTruthy();
         queue.release();
         ctx.release();
-      }
+      });
     });
 
-    it("must be able to create a 1 MB Buffer on any Device", function() {
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = cl.createContext({ device: CL.DEVICES[d] });
-        var buffer1M = ctx.createBuffer(CL.MEM_READ_WRITE, 1024*1024);
-        expect(typeof buffer1M).toBe('object');
+    it("must be able to create two Buffers on any Device", function() {
+      CL.DEVICES.forEach(function(dev) {
+        var ctx = cl.createContext({ device: dev });
+        var buffer1M = ctx.createBuffer({ size: 1*1024*1024 });
+        var buffer2M = ctx.createBuffer({ size: 2*1024*1024 });
+        expect(buffer1M instanceof WebCLMemoryObject).toBeTruthy();
+        expect(buffer2M instanceof WebCLMemoryObject).toBeTruthy();
         buffer1M.release();
-        ctx.release();
-      }
+        buffer2M.release();
+        ctx.releaseAll();
+      });
+    });
+
+    it("must have separate resources on each instance", function() {
+      CL.DEVICES.forEach(function(dev) {
+        var ctx1 = cl.createContext({ name: 'one' });
+        var ctx2 = cl.createContext({ name: 'two' });
+        var buffer1 = ctx1.createBuffer({ size: 1024, name: 'b1' });
+        var buffer2 = ctx2.createBuffer({ size: 2048, name: 'b2' });
+        expect(ctx1.buffers.length).toBe(1);
+        expect(ctx2.buffers.length).toBe(1);
+      });
     });
 
     it("Must be able to read and write Buffers on any Device", function() {
       var input = new Float32Array(512);
       input[12] = 3.14159;
       var output = new Float32Array(512);
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = cl.createContext({ device: CL.DEVICES[d] });
+      CL.DEVICES.forEach(function(dev) {
+        var ctx = cl.createContext({ device: dev });
         var queue = ctx.createCommandQueue();
         var buffer1M = ctx.createBuffer({ size: 1024*1024 });
         function execute() {
@@ -243,11 +244,10 @@ describe("Dynamic functionality", function() {
         buffer1M.release();
         queue.release();
         ctx.release();
-      }
+      });
     });
 
     it("must be able to release all CL resources allocated by this module", function() {
-      cl.releaseAll();
       expect(cl.contexts.length).toEqual(0);
     });
 

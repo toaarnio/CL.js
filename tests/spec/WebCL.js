@@ -373,6 +373,7 @@ describe("WebCL", function() {
       createProgramWithSource : false,  // renamed to createProgram
       createProgramWithBinary : false,  // disallowed by WebCL
       getContextInfo : false,           // renamed to getInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLCommandQueue : {
@@ -400,29 +401,34 @@ describe("WebCL", function() {
       enqueueMapImage : false,          // disallowed by WebCL
       enqueueUnmapMemObject : false,    // disallowed by WebCL
       getCommandQueueInfo : false,      // renamed to getInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLMemoryObject : {
       getInfo : true,
       release : true,
       createSubBuffer : false,
-      getImageInfo: false,        // moved to WebCLImage
-      getMemObjectInfo : false,   // renamed to getInfo
+      getImageInfo: false,              // moved to WebCLImage
+      getMemObjectInfo : false,         // renamed to getInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLBuffer : {
       createSubBuffer : true,
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLImage : {
       getInfo : true,
-      getImageInfo: false,          // renamed to getInfo
+      getImageInfo: false,              // renamed to getInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLSampler : {
       getInfo : true,
       release : true,
-      getSamplerInfo: false,        // renamed to getInfo
+      getSamplerInfo: false,            // renamed to getInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLProgram : {
@@ -432,9 +438,10 @@ describe("WebCL", function() {
       createKernel : true,
       createKernelsInProgram : true,
       release : true,
-      buildProgram : false,          // renamed to build
-      getProgramInfo : false,        // renamed to getInfo
-      getProgramBuildInfo : false,   // renamed to getBuildInfo
+      buildProgram : false,             // renamed to build
+      getProgramInfo : false,           // renamed to getInfo
+      getProgramBuildInfo : false,      // renamed to getBuildInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLKernel : {
@@ -442,10 +449,11 @@ describe("WebCL", function() {
       getWorkGroupInfo : true,
       setArg : true,
       release : true,
-      setKernelArg : false,           // renamed to setArg
-      setKernelArgLocal : false,      // renamed to setArg
-      getKernelInfo: false,           // renamed to getInfo
-      getKernelWorkGroupInfo : false, // renamed to getWorkGroupInfo
+      setKernelArg : false,             // renamed to setArg
+      setKernelArgLocal : false,        // renamed to setArg
+      getKernelInfo: false,             // renamed to getInfo
+      getKernelWorkGroupInfo : false,   // renamed to getWorkGroupInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLEvent : {
@@ -453,14 +461,16 @@ describe("WebCL", function() {
       getProfilingInfo : true,
       setCallback : true,
       release : true,
-      setUserEventStatus : false,    // moved to WebCLUserEvent
-      getEventInfo : false,          // renamed to getInfo
-      getEventProfilingInfo : false, // renamed to getProfilingInfo
+      setUserEventStatus : false,       // moved to WebCLUserEvent
+      getEventInfo : false,             // renamed to getInfo
+      getEventProfilingInfo : false,    // renamed to getProfilingInfo
+      releaseCLResources : false,       // renamed to release
     },
 
     WebCLUserEvent : {
       setStatus : true,
-      setUserEventStatus : false,    // renamed to setStatus
+      setUserEventStatus : false,       // renamed to setStatus
+      releaseCLResources : false,       // renamed to release
     },
   };
 

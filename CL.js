@@ -77,13 +77,27 @@
 // functionality that are available. CL.js can be safely included
 // multiple times from different JavaScript source files.
 //
-"use strict"
+
+//"use strict"
 
 
-// CL constructor & static properties
-
+// CL constructor, defining member attributes
+//
 var CL = function() { 
-  console.log("CL instance constructor!"); 
+
+  console.log("CL constructor!");
+
+  // ### cl.ID ###
+  //
+  // A globally unique ID number identifying this instance.
+  //
+  this.ID = CL.COUNT++;
+
+  // ### cl.contexts ###
+  //
+  // An array of all WebCLContexts that have been created by this particular CL instance.
+  //
+  this.contexts = [];
 };
 
 (function createCL() {
@@ -113,6 +127,12 @@ var CL = function() {
   //
   CL.DEVICES = [];
 
+  // ### CL.COUNT ###
+  //
+  // Number of CL instances created so far.
+  //
+  CL.COUNT = 0;
+
   // ### CL.loadSource() ###
   // 
   // Loads a kernel source code file from the given `uri` via http GET, with a random query string
@@ -140,15 +160,9 @@ var CL = function() {
 
   // ## CL.prototype ##
   //
-  // Contains the member functions and variables of a CL instance, defined and documented below.
+  // Contains the member functions of a CL instance, defined and documented below.
   //
   CL.prototype = {};
-
-  // ### cl.contexts ###
-  //
-  // An array of all WebCLContexts that have been created by this particular CL instance.
-  //
-  CL.prototype.contexts = [];
 
   // ### cl.createContext() ###
   // 
@@ -169,9 +183,13 @@ var CL = function() {
     expect("a valid and available Device", parameters.device.isAvailable);
 
     var ctx = WebCL.createContext({ devices: [parameters.device] });
+    //ctx = new CL.Context(ctx);
     ctx.name = parameters.name;
     ctx.device = parameters.device;
     ctx.platform = ctx.device.platform;
+    ctx.queues = [];
+    ctx.buffers = [];
+    ctx.programs = [];
     this.contexts.push(ctx);
     return ctx;
   };
@@ -192,7 +210,7 @@ var CL = function() {
   //
   CL.prototype.releaseAll = function() {
     for (var i=0; i < this.contexts.length; i++) {
-      this.contexts[i].release();
+      this.contexts[i].releaseAll();
       delete this.contexts[i];
     }
     this.contexts.length = 0;
@@ -204,39 +222,58 @@ var CL = function() {
   (function augmentWebCL() {
     getEnums(CL);
     getSystemInfo(CL.PLATFORMS, CL.DEVICES);
-    deleteDeprecated();
     augmentWebCLPlatform();
     augmentWebCLDevice();
     augmentWebCLContext();
+    augmentWebCLCommandQueue();
     augmentWebCLProgram();
     augmentWebCLKernel();
+    deleteDeprecated();
 
     function deleteDeprecated() {
-      delete WebCL.getPlatformIDs;
-      delete WebCL.createContextFromType;
-      delete WebCLPlatform.prototype.getPlatformInfo;
-      delete WebCLPlatform.prototype.getDeviceIDs;
-      delete WebCLDevice.prototype.getDeviceInfo;
-      delete WebCLContext.prototype.createImage2D;
-      delete WebCLContext.prototype.createImage3D;
-      delete WebCLContext.prototype.createProgramWithSource;
-      delete WebCLContext.prototype.getContextInfo;
-      delete WebCLCommandQueue.prototype.enqueueMapBuffer;
-      delete WebCLCommandQueue.prototype.enqueueMapImage;
-      delete WebCLCommandQueue.prototype.enqueueUnmapMemObject;
-      delete WebCLCommandQueue.prototype.enqueueTask;
-      delete WebCLCommandQueue.prototype.getCommandQueueInfo;
-      delete WebCLMemoryObject.prototype.getMemObjectInfo;
-      delete WebCLProgram.prototype.buildProgram;
-      delete WebCLProgram.prototype.getProgramInfo;
-      delete WebCLProgram.prototype.getProgramBuildInfo;
-      delete WebCLKernel.prototype.setKernelArg;
-      delete WebCLKernel.prototype.setKernelArgLocal;
-      delete WebCLKernel.prototype.getKernelInfo;
-      delete WebCLKernel.prototype.getKernelWorkGroupInfo;
-      delete WebCLSampler.prototype.getSamplerInfo;
-      delete WebCLEvent.prototype.getEventInfo;
-      delete WebCLEvent.prototype.getEventProfilingInfo;
+
+      var functions = [ 
+        'getPlatformIDs',
+        'createContextFromType',
+        'getPlatformInfo',
+        'getDeviceIDs',
+        'getDeviceInfo',
+        'createImage2D',
+        'createImage3D',
+        'createProgramWithSource',
+        'createProgramWithBinary',
+        'getContextInfo',
+        'enqueueMapBuffer',
+        'enqueueMapImage',
+        'enqueueUnmapMemObject',
+        'enqueueTask',
+        'getCommandQueueInfo',
+        'getMemObjectInfo',
+        'buildProgram',
+        'getProgramInfo',
+        'getProgramBuildInfo',
+        'setKernelArg',
+        'setKernelArgLocal',
+        'getKernelInfo',
+        'getKernelWorkGroupInfo',
+        'getSamplerInfo',
+        'getEventInfo',
+        'getEventProfilingInfo',
+        'releaseCLResources',
+      ];
+
+      [n for (n in window)].filter(function(name) { 
+        return name.startsWith("WebCL"); 
+      }).forEach(function(cname) {
+        functions.forEach(function(fname) {
+          if (window[cname].prototype) {
+            delete window[cname].prototype[fname];
+          } else {
+            delete window[cname][fname];
+          }
+        });
+      });
+
       for (var enumName in WebCL) {
         if (typeof WebCL[enumName] === 'number') {
           if (enumName.indexOf("CL_") === 0) {
@@ -246,42 +283,82 @@ var CL = function() {
       }
     };
 
+    function extend(Child, Parent) {
+      var p = Parent.prototype;
+      var c = Child.prototype;
+      for (var i in p) {
+        c[i] = p[i];
+      }
+      c.uber = p;
+      /*
+      var F = function() {};
+      F.prototype = Parent.prototype;
+      Child.prototype = new F();
+      Child.prototype.constructor = Child;
+      Child.uber = Parent.prototype;
+      */
+    }
+
     // ### WebCLPlatform ###
     //
     function augmentWebCLPlatform() {
-      WebCLPlatform.prototype.vendor = null; 
-      WebCLPlatform.prototype.devices = null; 
+      WebCLPlatform.prototype.getSupportedExtensions = function() {
+        return this.getInfo(CL.PLATFORM_EXTENSIONS).split(' ').filter(function(v) { 
+          return (v.length > 0);
+        });
+      };
     };
 
     // ### WebCLDevice ###
     //
     function augmentWebCLDevice() {
-      WebCLDevice.prototype.id = null;
-      WebCLDevice.prototype.name = null;
-      WebCLDevice.prototype.type = null;
-      WebCLDevice.prototype.vendor = null;
-      WebCLDevice.prototype.version = null;
-      WebCLDevice.prototype.isAvailable = false;
-      WebCLDevice.prototype.platform = null;
+      WebCLDevice.prototype.getSupportedExtensions = function() {
+        return this.getInfo(CL.DEVICE_EXTENSIONS).split(' ').filter(function(v) { 
+          return (v.length > 0);
+        });
+      };
     };
 
     // ### WebCLContext ###
     //
     function augmentWebCLContext() {
-      WebCLContext.prototype.name = null;
-      WebCLContext.prototype.device = null;
-      WebCLContext.prototype.platform = null;
-      WebCLContext.prototype.programs = [];
 
-      WebCLContext.prototype.buildProgram = function(parameters) {
-        var program = this.createProgram(parameters);
-        program.build(parameters);
-        return program;
+      var _createBuffer = WebCLContext.prototype.createBuffer;
+      var _createCommandQueue = WebCLContext.prototype.createCommandQueue;
+      var _createProgram = WebCLContext.prototype.createProgram;
+      var _createProgramWithBinary = WebCLContext.prototype.createProgramWithBinary;
+
+      WebCLContext.prototype.createCommandQueue = function(parameters) {
+        parameters = parameters || {};
+        var name = parameters.name || this.queues.length.toString();
+        var props = CL.PROFILE===true ? CL.QUEUE_PROFILING_ENABLE : null;
+        var queue = _createCommandQueue.call(this, this.device, props);
+        queue.context = this;
+        queue.name = name;
+        queue.events = [];
+        this.queues.push(queue);
+        return queue;
       };
 
-      WebCLContext.prototype._createProgram = WebCLContext.prototype.createProgram;
-      WebCLContext.prototype.createProgram = function(parameters) {
+      WebCLContext.prototype.createBuffer = function createBuffer(parameters) {
+        parameters = parameters || {};
+        var byteLength = parameters.size || 1024;
+        var memFlags = parameters.flags || CL.MEM_READ_WRITE;
+        var name = parameters.name || this.buffers.length.toString();
+        var buffer = _createBuffer.call(this, memFlags, byteLength);
+        buffer.flags = memFlags;
+        buffer.size = byteLength;
+        buffer.context = this;
+        buffer.name = name;
+        removeFromArray(this.buffers, name);
+        this.buffers.push(buffer);
+        return buffer;
+      };
+
+      WebCLContext.prototype.createProgram = function createProgram(parameters) {
+        console.log(arguments.callee.name);
         var props = {};
+        parameters = parameters || {};
         switch (typeof(parameters)) {
         case 'object':
           props.uri = parameters.uri;
@@ -298,10 +375,10 @@ var CL = function() {
         var program = null;
         if (props.source || props.ptx) {
           if (props.source) {
-            program = this._createProgram(props.source);
+            program = _createProgram.call(this, props.source);
             program.source = props.source;
           } else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
-            program = this.createProgramWithBinary([this.device], [props.ptx]);
+            program = _createProgramWithBinary.call(this, [this.device], [props.ptx]);
             program.ptx = props.ptx;
           }
         }
@@ -311,7 +388,38 @@ var CL = function() {
         this.programs.push(program);
         return program;
       };
+
+      WebCLContext.prototype.releaseAll = function() {
+        console.log("Context.releaseAll");
+        clearArray(this.programs);
+        clearArray(this.queues);
+        clearArray(this.buffers);
+        this.release();
+      };
     };
+
+    function augmentWebCLCommandQueue() {
+
+      var _enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
+      var _enqueueReadBuffer = WebCLCommandQueue.prototype.enqueueReadBuffer;
+
+      WebCLCommandQueue.prototype.enqueueWriteBuffer = function(dstBuffer, srcArray) {
+        var dstBuffer = (typeof dstBuffer === 'string') ? this.context.getBuffer(dstBuffer) : dstBuffer;
+        var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
+        var event = _enqueueWriteBuffer.call(this, dstBuffer, false, 0, numBytes, srcArray, []);
+        this.events.push(event);
+        return event;
+      };
+
+      WebCLCommandQueue.prototype.enqueueReadBuffer = function(srcBuffer, dstArray) {
+        var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
+        var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
+        var event = _enqueueReadBuffer.call(this, srcBuffer, false, 0, numBytes, dstArray, []);
+        this.events.push(event);
+        return event;
+      };
+    }
+
 
     // ### WebCLProgram ###
     //
@@ -325,8 +433,11 @@ var CL = function() {
       WebCLProgram.prototype.device = null;
       WebCLProgram.prototype.platform = null;
 
-      WebCLProgram.prototype._build = WebCLProgram.prototype.build;
+      var _buildProgram = WebCLProgram.prototype.build;
+      var _release = WebCLProgram.prototype.releaseCLResources;
+
       WebCLProgram.prototype.build = function(parameters) {
+        parameters = parameters || {};
         var self = this;
         this.compilerOpts = parameters.opts || "";
         this.compilerDefs = "";
@@ -334,7 +445,7 @@ var CL = function() {
           this.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
         }
         try {
-          this._build([this.device], this.compilerDefs + this.compilerOpts);
+          _buildProgram.call(this, [this.device], this.compilerDefs + this.compilerOpts);
           if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
             this.kernels = kernelFactory();
             if (this.kernels.length > 0) {
@@ -379,11 +490,11 @@ var CL = function() {
       };
 
       WebCLProgram.prototype.getKernel = function(name) {
-        return CL.getFromArray(this.kernels, name);
+        return getFromArray(this.kernels, name);
       };
 
       WebCLProgram.prototype.releaseAll = function() {
-        CL.clearArray(this.kernels);
+        clearArray(this.kernels);
         this.release();
       };
     };
@@ -402,7 +513,9 @@ var CL = function() {
       WebCLKernel.prototype.platform = null;
       WebCLKernel.prototype.releaseAll = WebCLKernel.prototype.release;
 
-      WebCLKernel.prototype._setArg = WebCLKernel.prototype.setArg;
+      var _setArg = WebCLKernel.prototype.setArg;
+      var _release = WebCLKernel.prototype.releaseCLResources;
+
       WebCLKernel.prototype.setArg = function(index, value) {
         var isMemObject = (value instanceof WebCLMemoryObject);
         var isNamedObject = (typeof(value) === 'string');
@@ -412,7 +525,7 @@ var CL = function() {
           memObject = memObject || this.context.getImage(value);
           value = memObject;
         }
-        this._setArg(index, value);
+        _setArg.call(this, index, value);
       };
 
       // Convenience wrapper for setArg that allows setting all
@@ -466,7 +579,11 @@ var CL = function() {
     for (var i=0; i < theArray.length; i++) {
       var theObject = theArray[i];
       if (theObject.name === name) {
-        theObject.releaseAll();
+        if (theObject.releaseAll) {
+          theObject.releaseAll();
+        } else if (theObject.release) {
+          theObject.release();
+        }
         theArray.splice(i, 1);
       }
     }
@@ -873,4 +990,94 @@ function Imp() {
   var self = this;
   
 };
+
+    // ### CL.Platform ###
+
+    CL.Platform = function Platform(wrapped) {
+      var self = this;
+      self.prototype = wrapped.prototype;
+      self._unwrap = function() { return wrapped };
+      self.getInfo = wrapped.getInfo.bind(wrapped);
+      self.NAME = self.getInfo(CL.PLATFORM_NAME);
+      self.VERSION = self.getInfo(CL.PLATFORM_VERSION);
+      self.VENDOR = self.getInfo(CL.PLATFORM_VENDOR);
+      self.PROFILE = self.getInfo(CL.PLATFORM_PROFILE);
+      self.EXTENSIONS = self.getInfo(CL.PLATFORM_EXTENSIONS).split(' ');
+      self.getDevices = function() { 
+        return wrapped.getDevices().map(function(d) { 
+          return new CL.Device(d); 
+        }); 
+      };
+    };
+
+    // ### CL.Device ###
+
+    CL.Device = function Device(wrapped) {
+      var self = this;
+      self.prototype = wrapped.prototype;
+      self._unwrap = function() { return wrapped };
+      self.getInfo = wrapped.getInfo.bind(wrapped);
+      self.NAME = self.getInfo(CL.DEVICE_NAME);
+      self.VERSION = self.getInfo(CL.DEVICE_VERSION);
+      self.VENDOR = self.getInfo(CL.DEVICE_VENDOR);
+      self.PROFILE = self.getInfo(CL.DEVICE_PROFILE);
+      self.EXTENSIONS = self.getInfo(CL.DEVICE_EXTENSIONS).split(' ');
+    };
+
+    // ### CL.Context ###
+
+    CL.Context = function Context(wrapped) {
+      var self = this;
+      self.prototype = wrapped.prototype;
+      self._unwrap = function() { return wrapped };
+      self.getInfo = wrapped.getInfo.bind(wrapped);
+      self.release = wrapped.release.bind(wrapped);
+
+      var _createProgram = WebCLContext.prototype.createProgram;
+      var _createProgramWithBinary = WebCLContext.prototype.createProgramWithBinary;
+
+      self.createProgram = function(parameters) {
+        var props = {};
+        parameters = parameters || {};
+        switch (typeof(parameters)) {
+        case 'object':
+          props.uri = parameters.uri;
+          props.source = parameters.source || CL.loadSource(parameters.uri);
+          props.ptx = parameters.ptx;
+          break;
+        case 'string':
+          props.uri = parameters.endsWith(".cl") ? parameters : null;
+          props.source = CL.loadSource(props.uri) || parameters;
+          break;
+        default:
+          throw "CL.Context.createProgram: Expected String or Object";
+        }
+        var program = null;
+        if (props.source || props.ptx) {
+          if (props.source) {
+            program = _createProgram.call(self, props.source);
+            program.source = props.source;
+          } else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
+            program = _createProgramWithBinary.call(self, [self.device._unwrap()], [props.ptx]);
+            program.ptx = props.ptx;
+          }
+        }
+        program.platform = self.platform;
+        program.device = self.device;
+        program.context = self;
+        self.programs.push(program);
+        return program;
+      };
+
+      self.releaseAll = function() {
+        console.log("CL.Context.releaseAll");
+        clearArray(self.programs);
+        clearArray(self.queues);
+        clearArray(self.buffers);
+        self.release();
+      };
+    };
+
 */
+
+
