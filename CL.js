@@ -179,6 +179,7 @@ var CL = function() {
   //
   CL.prototype.createContext = function(parameters) {
     parameters = parameters || {};
+    parameters.name = parameters.name || "context" + this.contexts.length.toString();
     parameters.device = parameters.device || CL.DEVICES[0];
     expect("a valid and available Device", parameters.device.isAvailable);
 
@@ -283,22 +284,6 @@ var CL = function() {
       }
     };
 
-    function extend(Child, Parent) {
-      var p = Parent.prototype;
-      var c = Child.prototype;
-      for (var i in p) {
-        c[i] = p[i];
-      }
-      c.uber = p;
-      /*
-      var F = function() {};
-      F.prototype = Parent.prototype;
-      Child.prototype = new F();
-      Child.prototype.constructor = Child;
-      Child.uber = Parent.prototype;
-      */
-    }
-
     // ### WebCLPlatform ###
     //
     function augmentWebCLPlatform() {
@@ -323,81 +308,103 @@ var CL = function() {
     //
     function augmentWebCLContext() {
 
-      var _createBuffer = WebCLContext.prototype.createBuffer;
       var _createCommandQueue = WebCLContext.prototype.createCommandQueue;
+      var _createBuffer = WebCLContext.prototype.createBuffer;
       var _createProgram = WebCLContext.prototype.createProgram;
       var _createProgramWithBinary = WebCLContext.prototype.createProgramWithBinary;
+      var _releaseAll = WebCLContext.prototype.releaseAll;
 
       WebCLContext.prototype.createCommandQueue = function(parameters) {
-        parameters = parameters || {};
-        var name = parameters.name || this.queues.length.toString();
-        var props = CL.PROFILE===true ? CL.QUEUE_PROFILING_ENABLE : null;
-        var queue = _createCommandQueue.call(this, this.device, props);
-        queue.context = this;
-        queue.name = name;
-        queue.events = [];
-        this.queues.push(queue);
-        return queue;
+        if (this.name === undefined) {
+          return _createCommandQueue.apply(this, arguments);
+        } else {
+          parameters = parameters || {};
+          var name = parameters.name || "queue" + this.queues.length.toString();
+          var props = CL.PROFILE===true ? CL.QUEUE_PROFILING_ENABLE : null;
+          var queue = _createCommandQueue.call(this, this.device, props);
+          queue.context = this;
+          queue.name = name;
+          queue.events = [];
+          removeFromArray(this.queues, name);
+          this.queues.push(queue);
+          return queue;
+        } 
       };
 
       WebCLContext.prototype.createBuffer = function createBuffer(parameters) {
-        parameters = parameters || {};
-        var byteLength = parameters.size || 1024;
-        var memFlags = parameters.flags || CL.MEM_READ_WRITE;
-        var name = parameters.name || this.buffers.length.toString();
-        var buffer = _createBuffer.call(this, memFlags, byteLength);
-        buffer.flags = memFlags;
-        buffer.size = byteLength;
-        buffer.context = this;
-        buffer.name = name;
-        removeFromArray(this.buffers, name);
-        this.buffers.push(buffer);
-        return buffer;
+        if (this.name === undefined) {
+          return _createBuffer.apply(this, arguments);
+        } else {
+          parameters = parameters || {};
+          var name = parameters.name || "buffer" + this.buffers.length.toString();
+          var byteLength = parameters.size || 1024;
+          var memFlags = parameters.flags || CL.MEM_READ_WRITE;
+          var buffer = _createBuffer.call(this, memFlags, byteLength);
+          buffer.flags = memFlags;
+          buffer.size = byteLength;
+          buffer.context = this;
+          buffer.name = name;
+          removeFromArray(this.buffers, name);
+          this.buffers.push(buffer);
+          return buffer;
+        }
       };
 
       WebCLContext.prototype.createProgram = function createProgram(parameters) {
-        console.log(arguments.callee.name);
-        var props = {};
-        parameters = parameters || {};
-        switch (typeof(parameters)) {
-        case 'object':
-          props.uri = parameters.uri;
-          props.source = parameters.source || CL.loadSource(parameters.uri);
-          props.ptx = parameters.ptx;
-          break;
-        case 'string':
-          props.uri = parameters.endsWith(".cl") ? parameters : null;
-          props.source = CL.loadSource(props.uri) || parameters;
-          break;
-        default:
-          throw "WebCLContext.createProgram: Expected String or Object";
-        }
-        var program = null;
-        if (props.source || props.ptx) {
-          if (props.source) {
-            program = _createProgram.call(this, props.source);
-            program.source = props.source;
-          } else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
-            program = _createProgramWithBinary.call(this, [this.device], [props.ptx]);
-            program.ptx = props.ptx;
+        if (this.name === undefined) {
+          return _createProgram.apply(this, arguments);
+        } else {
+          var props = {};
+          parameters = parameters || {};
+          var name = parameters.name || "program" + this.programs.length.toString();
+          switch (typeof(parameters)) {
+          case 'object':
+            props.uri = parameters.uri;
+            props.source = parameters.source || CL.loadSource(parameters.uri);
+            props.ptx = parameters.ptx;
+            break;
+          case 'string':
+            props.uri = parameters.endsWith(".cl") ? parameters : null;
+            props.source = CL.loadSource(props.uri) || parameters;
+            break;
+          default:
+            throw "WebCLContext.createProgram: Expected String or Object";
           }
+          var program = null;
+          if (props.source || props.ptx) {
+            if (props.source) {
+              program = _createProgram.call(this, props.source);
+              program.source = props.source;
+            } else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
+              program = _createProgramWithBinary.call(this, [this.device], [props.ptx]);
+              program.ptx = props.ptx;
+            }
+          }
+          program.platform = this.platform;
+          program.device = this.device;
+          program.context = this;
+          program.name = name;
+          removeFromArray(this.programs, name);
+          this.programs.push(program);
+          return program;
         }
-        program.platform = this.platform;
-        program.device = this.device;
-        program.context = this;
-        this.programs.push(program);
-        return program;
       };
 
       WebCLContext.prototype.releaseAll = function() {
-        console.log("Context.releaseAll");
-        clearArray(this.programs);
-        clearArray(this.queues);
-        clearArray(this.buffers);
-        this.release();
+        if (this.name === undefined) {
+          this.release();
+        } else {
+          console.log("Context.releaseAll");
+          clearArray(this.programs);
+          clearArray(this.queues);
+          clearArray(this.buffers);
+          this.release();
+        }
       };
     };
 
+    // ### WebCLCommandQueue ###
+    //
     function augmentWebCLCommandQueue() {
 
       var _enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
