@@ -17,14 +17,14 @@
 
 describe("Dynamic functionality", function() {
 
-  var SELECTED_DEVICE = 1;
+  var SELECTED_DEVICE = CL.DEVICES[1];
 
   var globals = {};
 
   beforeEach(function() {
     this.addMatchers({
-      toEvaluateToTrue: function() {
-        return eval(this.actual);
+      toEvalAs: function(result) {
+        return eval(this.actual) === eval(result);
       },
     });
   });
@@ -33,41 +33,164 @@ describe("Dynamic functionality", function() {
   //
   //
   // 
-  describe("CL.js", function() {
+  describe("CL", function() {
     
-    it("must have the WebCL enums", function() {
-      expect(CL.PLATFORM_VENDOR).toEqual(WebCL.PLATFORM_VENDOR);
-      expect(CL.INVALID_ARG_SIZE).toEqual(WebCL.INVALID_ARG_SIZE);
+    beforeEach(function() {
+      cl1 = new CL({ debug: false, cleanup: true });
+      cl2 = new CL({ debug: false, cleanup: true });
+      cl = cl1;
     });
 
-    it("must have a unique ID on each instance", function() {
-      var cl1 = new CL({ debug: false, cleanup: false });
-      var cl2 = new CL({ debug: false, cleanup: false });
-      expect(cl1).not.toEqual(cl2);
+    afterEach(function() {
+      cl1.releaseAll();
       cl2.releaseAll();
-      cl1.releaseAll();
+      delete cl1;
+      delete cl2;
     });
 
-    it("must be able to create and retrieve a Context", function() {
-      var cl1 = new CL({ debug: false, cleanup: false });
-      var ctx1 = cl1.createContext({ name: 'foo' });
-      var ctx2 = cl1.getContext('foo');
-      expect(ctx1).toEqual(ctx2);
-      cl1.releaseAll();
+    it("must contain the WebCL enums", function() {
+      expect('CL.PLATFORM_VENDOR').toEvalAs('WebCL.PLATFORM_VENDOR');
+      expect('CL.INVALID_ARG_SIZE').toEvalAs('WebCL.INVALID_ARG_SIZE');
     });
 
-    it("must have separate resources on each instance", function() {
-      var cl1 = new CL({ debug: false, cleanup: false });
-      var cl2 = new CL({ debug: false, cleanup: false });
+    it("instances must have a unique ID", function() {
+      expect('cl1.ID').not.toEvalAs('cl2.ID');
+    });
+
+    it("must be able to create a Context on the default Device", function() {
+      ctx1 = cl.createContext();
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must be able to create a Context on the selected Device", function() {
+      ctx1 = cl.createContext({ device: SELECTED_DEVICE });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must be able to retrieve a Context by name", function() {
+      ctx1 = cl.createContext();
+      ctx1.name = 'foo';
+      ctx2 = cl.getContext('foo');
+      ctx3 = cl.getContext('bar');
+      expect('ctx1').toEvalAs('ctx2');
+      expect('ctx3').toEvalAs(null);
+    });
+
+    it("instances must have isolated properties", function() {
+      cl1.foo = 'bar';
+      cl2.foo = 'baz';
+      expect(cl1.foo).toEqual('bar');
+      expect(cl2.foo).toEqual('baz');
+      expect(cl1.foo).not.toEqual(cl2.foo);
+    });
+
+    it("instances must have isolated Contexts", function() {
       cl1.createContext({ name: 'foo' });
       cl2.createContext({ name: 'foo' });
-      expect(cl1.getContext('foo')).not.toEqual(cl2.getContext('foo'));
-      cl2.releaseAll();
-      cl1.releaseAll();
+      expect("cl1.getContext('foo')").not.toEvalAs("cl2.getContext('foo')");
+    });
+
+    describe("loadSource", function() {
+
+      it("must work in synchronous mode", function() {
+        var src = CL.loadSource('kernels/rng.cl');
+        expect(src && src.length).toBeGreaterThan(0);
+      });
+      
+      it("must work in asynchronous mode", function() {
+        var done = false;
+        runs(function() {
+          var ok = CL.loadSource('kernels/rng.cl', function(src) {
+            expect(src && src.length).toBeGreaterThan(0);
+            done = true;
+          });
+          expect(ok).toEqual(true);
+        });
+        waitsFor(function() { return done; }, "http request to complete", 100);
+      });
+
+      it("must throw if there is any failure in synchronous mode", function() {
+        expect(CL.loadSource.bind(this)).toThrow();
+        expect(CL.loadSource.bind(this, '')).toThrow();
+        expect(CL.loadSource.bind(this, null)).toThrow();
+        expect(CL.loadSource.bind(this, 'invalidURI')).toThrow();
+        expect(CL.loadSource.bind(this, 'validButDoesNotExist.cl')).toThrow();
+      });
+
+      it("must throw immediately if the URI is invalid in asynchronous mode", function() {
+        function callback() {};
+        expect(CL.loadSource.bind(this, '', callback)).toThrow();
+        expect(CL.loadSource.bind(this, null, callback)).toThrow();
+        expect(CL.loadSource.bind(this, 'invalidURI', callback)).toThrow();
+      });
+
+      it("must return null if http request fails in asynchronous mode", function() {
+        var done = false;
+        runs(function() { 
+          CL.loadSource('validButDoesNotExist.cl', function(src) {
+            expect(src).toBeNull();
+            done = true;
+          });
+        });
+        waitsFor(function() { return done }, "http request to fail", 100);
+      });
+
+    });
+    
+    it("must be able to create a Program from URI", function() {
+      var ctx = cl.createContext({ device: SELECTED_DEVICE });
+      var testFunc = function() {
+        var uri = 'kernels/rng.cl';
+        program = ctx.createProgram({ uri: uri });
+        expect('program instanceof WebCLProgram').toEvalAs(true);
+      } 
+      expect(testFunc).not.toThrow();
+    });
+
+    it("must be able to build kernels from URI or source", function() {
+      var ctx = cl.createContext({ device: SELECTED_DEVICE });
+      var testFunc = function() {
+        var uri = 'kernels/rng.cl';
+        var src = CL.loadSource(uri);
+        globals.program = ctx.createProgram({ source: src });
+        globals.program.build();
+        expect('globals.program instanceof WebCLProgram').toEvalAs(true);
+        /*
+          globals.kernel1 = ctx.buildKernel({ source: src });
+          globals.kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
+          globals.kernel3 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
+          globals.kernel4 = ctx.buildKernel(src);
+          globals.kernel5 = ctx.buildKernel(uri);
+          globals.kernel6 = ctx.buildKernels(uri)[0];
+          expect('globals.kernel1 instanceof WebCLKernel').toEvaluateToTrue();
+          expect('globals.kernel2 instanceof WebCLKernel').toEvaluateToTrue();
+          expect('globals.kernel3 instanceof WebCLKernel').toEvaluateToTrue();
+          expect('globals.kernel4 instanceof WebCLKernel').toEvaluateToTrue();
+          expect('globals.kernel5 instanceof WebCLKernel').toEvaluateToTrue();
+          expect('globals.kernel6 instanceof WebCLKernel').toEvaluateToTrue();
+        */
+      } 
+      expect(testFunc).not.toThrow();
+    });
+
+    it("must be able to build kernels from PTX source on NVIDIA GPUs", function() {
+      var ctx = cl.createContext({ device: SELECTED_DEVICE });
+      var testFunc = function() {
+        if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
+          var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
+          var src = CL.loadSource(uri);
+          expect(src.length).toBeGreaterThan(0);
+          prog = ctx.createProgram({ ptx: src });
+          prog.build();
+          expect('prog instanceof WebCLProgram').toEvalAs(true);
+          expect('prog.createKernelsInProgram() instanceof Array').toEvalAs(true);
+          expect('prog.createKernelsInProgram()[0] instanceof WebCLKernel').toEvalAs(true);
+        }
+      }
+      expect(testFunc).not.toThrow();
     });
 
     it("must throw an exception on invalid input", function() {
-      var cl = new CL({ debug: false, cleanup: false });
       var uri = 'kernels/rng.cl';
       var src = CL.loadSource(uri);
       var ctx = cl.createContext();
@@ -83,191 +206,115 @@ describe("Dynamic functionality", function() {
       expect(function() { ctx.buildKernel(0xdeadbeef) }).toThrow();
       expect(function() { ctx.buildKernel({}) }).toThrow();
       expect(function() { ctx.buildKernel() }).toThrow();
-      cl.releaseAll();
-    });
-
-    it("must be able to build kernels from URI or source", function() {
-      var cl = new CL({ debug: false, cleanup: false });
-      var ctx = cl.createContext();
-      var testFunc = function() {
-        var uri = 'kernels/rng.cl';
-        var src = CL.loadSource(uri);
-        globals.program = ctx.createProgram({ source: src });
-        globals.program.build();
-        expect('globals.program instanceof WebCLProgram').toEvaluateToTrue();
-        /*
-        globals.kernel1 = ctx.buildKernel({ source: src });
-        globals.kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
-        globals.kernel3 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
-        globals.kernel4 = ctx.buildKernel(src);
-        globals.kernel5 = ctx.buildKernel(uri);
-        globals.kernel6 = ctx.buildKernels(uri)[0];
-        expect('globals.kernel1 instanceof WebCLKernel').toEvaluateToTrue();
-        expect('globals.kernel2 instanceof WebCLKernel').toEvaluateToTrue();
-        expect('globals.kernel3 instanceof WebCLKernel').toEvaluateToTrue();
-        expect('globals.kernel4 instanceof WebCLKernel').toEvaluateToTrue();
-        expect('globals.kernel5 instanceof WebCLKernel').toEvaluateToTrue();
-        expect('globals.kernel6 instanceof WebCLKernel').toEvaluateToTrue();
-        */
-      } 
-      expect(testFunc).not.toThrow();
-      cl.releaseAll();
-    });
-
-    it("should be able to build kernels from PTX source on NVIDIA GPUs", function() {
-      var cl = new CL({ debug: false, cleanup: false });
-      var ctx = cl.createContext();
-      var testFunc = function() {
-        if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
-          var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
-          var src = CL.loadSource(uri);
-          var prog1 = ctx.buildProgram({ ptx: src });
-          globals.kernel1 = ctx.buildKernel({ ptx: src });
-          expect(prog1 instanceof WebCLProgram).toBeTruthy();
-          expect('globals.kernel1 instanceof WebCLKernel').toBeTruthy();
-        }
-      }
-      expect(testFunc).not.toThrow();
-      cl.releaseAll();
-    });
-
-  });
-
-  //////////////////////////////////////////////////////////////////////////////
-  //
-  //
-  // 
-  describe("WebCLContext", function() {
-
-    var CTX = null;
-    var cl = null;
-
-    beforeEach(function() {
-      if (!cl) {
-        console.log("WebCLContext test suite - beforeEach()");
-        cl = new CL({ debug: false, cleanup: true });
-      }
-    });
-
-    afterEach(function() {
-      cl.releaseAll();
-    });
-
-    function createContexts() {
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        cl.createContext({ device: CL.DEVICES[d] });
-      }
-    };
-
-    it("must be testable", function() {
-      expect(CL.DEVICES.length).toBeGreaterThan(0);
-    });
-
-    it("must be able to create a Context on any Platform", function() {
-      CL.PLATFORMS.forEach(function(plat) {
-        var ctx = cl.createContext({ platform: plat });
-        expect(ctx instanceof WebCLContext).toBeTruthy();
-        ctx.release;
-      });
-    });
-
-    it("must be able to create a Context on any Device", function() {
-      CL.DEVICES.forEach(function(dev) {
-        var ctx = cl.createContext({ device: dev });
-        expect(ctx instanceof WebCLContext).toBeTruthy();
-        ctx.release();
-      });
-    });
-
-    it("must be able to create a Context spanning all Devices on a Platform", function() {
-      CL.PLATFORMS.forEach(function(plat) {
-        var ctx = cl.createContext({ devices: plat.devices });
-        expect(ctx instanceof WebCLContext).toBeTruthy();
-        ctx.release();
-      });
-    });
-
-    it("must be able to create a CommandQueue on any Device", function() {
-      CL.DEVICES.forEach(function(dev) {
-        var ctx = cl.createContext({ device: dev });
-        var queue = ctx.createCommandQueue();
-        expect(queue instanceof WebCLCommandQueue).toBeTruthy();
-        queue.release();
-        ctx.release();
-      });
-    });
-
-    it("must be able to create two Buffers on any Device", function() {
-      CL.DEVICES.forEach(function(dev) {
-        var ctx = cl.createContext({ device: dev });
-        var buffer1M = ctx.createBuffer({ size: 1*1024*1024 });
-        var buffer2M = ctx.createBuffer({ size: 2*1024*1024 });
-        expect(buffer1M instanceof WebCLMemoryObject).toBeTruthy();
-        expect(buffer2M instanceof WebCLMemoryObject).toBeTruthy();
-        buffer1M.release();
-        buffer2M.release();
-        ctx.releaseAll();
-      });
-    });
-
-    it("must have separate resources on each instance", function() {
-      CL.DEVICES.forEach(function(dev) {
-        var ctx1 = cl.createContext({ name: 'one' });
-        var ctx2 = cl.createContext({ name: 'two' });
-        var buffer1 = ctx1.createBuffer({ size: 1024, name: 'b1' });
-        var buffer2 = ctx2.createBuffer({ size: 2048, name: 'b2' });
-        expect(ctx1.buffers.length).toBe(1);
-        expect(ctx2.buffers.length).toBe(1);
-      });
-    });
-
-    it("Must be able to read and write Buffers on any Device", function() {
-      var input = new Float32Array(512);
-      input[12] = 3.14159;
-      var output = new Float32Array(512);
-      CL.DEVICES.forEach(function(dev) {
-        var ctx = cl.createContext({ device: dev });
-        var queue = ctx.createCommandQueue();
-        var buffer1M = ctx.createBuffer({ size: 1024*1024 });
-        function execute() {
-          queue.enqueueWriteBuffer(buffer1M, input);
-          queue.enqueueReadBuffer(buffer1M, output);
-          queue.finish();
-          for (var i=0; i < input.length; i++) {
-            if (input[i] !== output[i]) {
-              console.log("output[i] = ", output[i]);
-              throw "input[i] !== output[i] for i="+i;
-            }
-          }
-        }
-        expect(execute).not.toThrow();
-        buffer1M.release();
-        queue.release();
-        ctx.release();
-      });
-    });
-
-    it("must be able to release all CL resources allocated by this module", function() {
-      expect(cl.contexts.length).toEqual(0);
     });
 
     //////////////////////////////////////////////////////////////////////////////
     //
     //
     // 
-    xdescribe("WebCLProgram", function() {
+    describe("WebCLContext", function() {
+
+      it("must be testable", function() {
+        expect(CL.DEVICES.length).toBeGreaterThan(0);
+      });
+
+      it("must be able to create a Context on any Platform", function() {
+        CL.PLATFORMS.forEach(function(plat) {
+          var ctx = cl.createContext({ platform: plat });
+          expect(ctx instanceof WebCLContext).toBeTruthy();
+          ctx.release;
+        });
+      });
+
+      it("must be able to create a Context on any Device", function() {
+        CL.DEVICES.forEach(function(dev) {
+          var ctx = cl.createContext({ device: dev });
+          expect(ctx instanceof WebCLContext).toBeTruthy();
+          ctx.release();
+        });
+      });
+
+      it("must be able to create a Context spanning all Devices on a Platform", function() {
+        CL.PLATFORMS.forEach(function(plat) {
+          var ctx = cl.createContext({ devices: plat.devices });
+          expect(ctx instanceof WebCLContext).toBeTruthy();
+          ctx.release();
+        });
+      });
+
+      it("must be able to create a CommandQueue on any Device", function() {
+        CL.DEVICES.forEach(function(dev) {
+          var ctx = cl.createContext({ device: dev });
+          var queue = ctx.createCommandQueue();
+          expect(queue instanceof WebCLCommandQueue).toBeTruthy();
+          queue.release();
+          ctx.release();
+        });
+      });
+
+      it("must be able to create two Buffers on any Device", function() {
+        CL.DEVICES.forEach(function(dev) {
+          var ctx = cl.createContext({ device: dev });
+          var buffer1M = ctx.createBuffer({ size: 1*1024*1024 });
+          var buffer2M = ctx.createBuffer({ size: 2*1024*1024 });
+          expect(buffer1M instanceof WebCLMemoryObject).toBeTruthy();
+          expect(buffer2M instanceof WebCLMemoryObject).toBeTruthy();
+          buffer1M.release();
+          buffer2M.release();
+          ctx.releaseAll();
+        });
+      });
+
+      it("must have separate resources on each instance", function() {
+        CL.DEVICES.forEach(function(dev) {
+          var ctx1 = cl.createContext({ name: 'one' });
+          var ctx2 = cl.createContext({ name: 'two' });
+          var buffer1 = ctx1.createBuffer({ size: 1024, name: 'b1' });
+          var buffer2 = ctx2.createBuffer({ size: 2048, name: 'b2' });
+          expect(ctx1.buffers.length).toBe(1);
+          expect(ctx2.buffers.length).toBe(1);
+        });
+      });
+
+      it("Must be able to read and write Buffers on any Device", function() {
+        var input = new Float32Array(512);
+        input[12] = 3.14159;
+        var output = new Float32Array(512);
+        CL.DEVICES.forEach(function(dev) {
+          var ctx = cl.createContext({ device: dev });
+          var queue = ctx.createCommandQueue();
+          var buffer1M = ctx.createBuffer({ size: 1024*1024 });
+          function execute() {
+            queue.enqueueWriteBuffer(buffer1M, input);
+            queue.enqueueReadBuffer(buffer1M, output);
+            queue.finish();
+            for (var i=0; i < input.length; i++) {
+              if (input[i] !== output[i]) {
+                console.log("output[i] = ", output[i]);
+                throw "input[i] !== output[i] for i="+i;
+              }
+            }
+          }
+          expect(execute).not.toThrow();
+          buffer1M.release();
+          queue.release();
+          ctx.release();
+        });
+      });
+    });
+
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    //
+    // 
+    describe("WebCLProgram", function() {
 
       var sobel;
-      var cl = null;
 
       beforeEach(function() {
-        if (!cl) {
-          console.log("WebCLProgram test suite - beforeEach()");
-          cl = new CL({ debug: false, cleanup: false });
-          sobel = CL.loadSource('kernels/sobel.cl');
-          for (var d=0; d < CL.DEVICES.length; d++) {
-            cl.createContext({ device: CL.DEVICES[d] });
-          }
+        sobel = CL.loadSource('kernels/sobel.cl');
+        for (var d=0; d < CL.DEVICES.length; d++) {
+          cl.createContext({ device: CL.DEVICES[d] });
         }
       });
 
@@ -432,7 +479,7 @@ describe("Dynamic functionality", function() {
       for (var d=0; d < CL.DEVICES.length; d++) {
         cl.createContext({ device: CL.DEVICES[d] });
       }
-      CTX = CL.DEVICES[SELECTED_DEVICE].contexts[0];
+      CTX = SELECTED_DEVICE.contexts[0];
     });
 
     afterEach(function() {
@@ -761,5 +808,5 @@ describe("Dynamic functionality", function() {
     });
 
   });
-
 });
+
