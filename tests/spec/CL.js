@@ -15,8 +15,12 @@
 // Uncomment the following line to enable the "fail fast" mode.
 //jasmine.getEnv().failFast();
 
-describe("Dynamic functionality", function() {
-
+//////////////////////////////////////////////////////////////////////////////
+//
+//
+// 
+describe("CL", function() {
+  
   var SELECTED_DEVICE = CL.DEVICES[1];
 
   var globals = {};
@@ -29,116 +33,166 @@ describe("Dynamic functionality", function() {
     });
   });
 
+  beforeEach(function() {
+    cl1 = new CL({ debug: false, cleanup: true });
+    cl2 = new CL({ debug: false, cleanup: true });
+    cl = cl1;
+  });
+
+  afterEach(function() {
+    cl1.releaseAll();
+    cl2.releaseAll();
+    delete cl1;
+    delete cl2;
+  });
+
+  it("must contain the WebCL enums", function() {
+    expect('CL.PLATFORM_VENDOR').toEvalAs('WebCL.PLATFORM_VENDOR');
+    expect('CL.INVALID_ARG_SIZE').toEvalAs('WebCL.INVALID_ARG_SIZE');
+  });
+
+  it("instances must have a unique ID", function() {
+    expect('cl1.ID').not.toEvalAs('cl2.ID');
+  });
+
+  it("instances must have isolated properties", function() {
+    cl1.foo = 'bar';
+    cl2.foo = 'baz';
+    expect(cl1.foo).toEqual('bar');
+    expect(cl2.foo).toEqual('baz');
+    expect(cl1.foo).not.toEqual(cl2.foo);
+  });
+
+  it("must contain at least one Device", function() {
+    expect(CL.DEVICES.length).toBeGreaterThan(0);
+  });
+
+  it("must be able to create a Context on the default Device", function() {
+    ctx1 = cl.createContext();
+    expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+  });
+
+  it("must be able to create a Context on the selected Device", function() {
+    ctx1 = cl.createContext({ device: SELECTED_DEVICE });
+    expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+  });
+
+  it("must be able to create a Context on any Platform", function() {
+    CL.PLATFORMS.forEach(function(plat) {
+      var ctx = cl.createContext({ platform: plat });
+      expect(ctx instanceof WebCLContext).toBeTruthy();
+      ctx.release;
+    });
+  });
+
+  it("must be able to create a Context on any Device", function() {
+    CL.DEVICES.forEach(function(dev) {
+      var ctx = cl.createContext({ device: dev });
+      expect(ctx instanceof WebCLContext).toBeTruthy();
+      ctx.release();
+    });
+  });
+
+  it("must be able to retrieve a Context by name", function() {
+    ctx1 = cl.createContext();
+    ctx1.name = 'foo';
+    ctx2 = cl.getContext('foo');
+    ctx3 = cl.getContext('bar');
+    expect('ctx1').toEvalAs('ctx2');
+    expect('ctx3').toEvalAs(null);
+  });
+
+  it("instances must have isolated Contexts", function() {
+    cl1.createContext({ name: 'foo' });
+    cl2.createContext({ name: 'foo' });
+    expect("cl1.getContext('foo')").not.toEvalAs("cl2.getContext('foo')");
+  });
+
+  it("must throw an exception on invalid input", function() {
+    expect(function() { cl.createContext({ device: 'foo' }) }).toThrow();
+  });
+
   //////////////////////////////////////////////////////////////////////////////
   //
-  //
+  // CL.loadSource
   // 
-  describe("CL", function() {
+  describe("loadSource", function() {
+
+    it("must work in synchronous mode", function() {
+      var src = CL.loadSource('kernels/rng.cl');
+      expect(src && src.length).toBeGreaterThan(0);
+    });
     
+    it("must work in asynchronous mode", function() {
+      var done = false;
+      runs(function() {
+        var ok = CL.loadSource('kernels/rng.cl', function(src) {
+          expect(src && src.length).toBeGreaterThan(0);
+          done = true;
+        });
+        expect(ok).toEqual(true);
+      });
+      waitsFor(function() { return done; }, "http request to complete", 100);
+    });
+
+    it("must throw if there is any failure in synchronous mode", function() {
+      expect(CL.loadSource.bind(this)).toThrow();
+      expect(CL.loadSource.bind(this, '')).toThrow();
+      expect(CL.loadSource.bind(this, null)).toThrow();
+      expect(CL.loadSource.bind(this, 'invalidURI')).toThrow();
+      expect(CL.loadSource.bind(this, 'validButDoesNotExist.cl')).toThrow();
+    });
+
+    it("must throw immediately if the URI is invalid in asynchronous mode", function() {
+      function callback() {};
+      expect(CL.loadSource.bind(this, '', callback)).toThrow();
+      expect(CL.loadSource.bind(this, null, callback)).toThrow();
+      expect(CL.loadSource.bind(this, 'invalidURI', callback)).toThrow();
+    });
+
+    it("must return null if http request fails in asynchronous mode", function() {
+      var done = false;
+      runs(function() { 
+        CL.loadSource('validButDoesNotExist.cl', function(src) {
+          expect(src).toBeNull();
+          done = true;
+        });
+      });
+      waitsFor(function() { return done }, "http request to fail", 100);
+    });
+
+  });
+  
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // Context
+  // 
+  describe("WebCLContext", function() {
+
     beforeEach(function() {
-      cl1 = new CL({ debug: false, cleanup: true });
-      cl2 = new CL({ debug: false, cleanup: true });
-      cl = cl1;
+      ctx = cl.createContext({ device: SELECTED_DEVICE });
     });
 
     afterEach(function() {
-      cl1.releaseAll();
-      cl2.releaseAll();
-      delete cl1;
-      delete cl2;
+      ctx.release();
     });
 
-    it("must contain the WebCL enums", function() {
-      expect('CL.PLATFORM_VENDOR').toEvalAs('WebCL.PLATFORM_VENDOR');
-      expect('CL.INVALID_ARG_SIZE').toEvalAs('WebCL.INVALID_ARG_SIZE');
+    it("must be able to create a CommandQueue", function() {
+      var queue = ctx.createCommandQueue();
+      expect(queue instanceof WebCLCommandQueue).toBeTruthy();
+      queue.release();
     });
 
-    it("instances must have a unique ID", function() {
-      expect('cl1.ID').not.toEvalAs('cl2.ID');
+    it("must be able to create two Buffers", function() {
+      var buffer1M = ctx.createBuffer({ size: 1*1024*1024 });
+      var buffer2M = ctx.createBuffer({ size: 2*1024*1024 });
+      expect(buffer1M instanceof WebCLMemoryObject).toBeTruthy();
+      expect(buffer2M instanceof WebCLMemoryObject).toBeTruthy();
+      buffer1M.release();
+      buffer2M.release();
     });
 
-    it("must be able to create a Context on the default Device", function() {
-      ctx1 = cl.createContext();
-      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
-    });
-
-    it("must be able to create a Context on the selected Device", function() {
-      ctx1 = cl.createContext({ device: SELECTED_DEVICE });
-      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
-    });
-
-    it("must be able to retrieve a Context by name", function() {
-      ctx1 = cl.createContext();
-      ctx1.name = 'foo';
-      ctx2 = cl.getContext('foo');
-      ctx3 = cl.getContext('bar');
-      expect('ctx1').toEvalAs('ctx2');
-      expect('ctx3').toEvalAs(null);
-    });
-
-    it("instances must have isolated properties", function() {
-      cl1.foo = 'bar';
-      cl2.foo = 'baz';
-      expect(cl1.foo).toEqual('bar');
-      expect(cl2.foo).toEqual('baz');
-      expect(cl1.foo).not.toEqual(cl2.foo);
-    });
-
-    it("instances must have isolated Contexts", function() {
-      cl1.createContext({ name: 'foo' });
-      cl2.createContext({ name: 'foo' });
-      expect("cl1.getContext('foo')").not.toEvalAs("cl2.getContext('foo')");
-    });
-
-    describe("loadSource", function() {
-
-      it("must work in synchronous mode", function() {
-        var src = CL.loadSource('kernels/rng.cl');
-        expect(src && src.length).toBeGreaterThan(0);
-      });
-      
-      it("must work in asynchronous mode", function() {
-        var done = false;
-        runs(function() {
-          var ok = CL.loadSource('kernels/rng.cl', function(src) {
-            expect(src && src.length).toBeGreaterThan(0);
-            done = true;
-          });
-          expect(ok).toEqual(true);
-        });
-        waitsFor(function() { return done; }, "http request to complete", 100);
-      });
-
-      it("must throw if there is any failure in synchronous mode", function() {
-        expect(CL.loadSource.bind(this)).toThrow();
-        expect(CL.loadSource.bind(this, '')).toThrow();
-        expect(CL.loadSource.bind(this, null)).toThrow();
-        expect(CL.loadSource.bind(this, 'invalidURI')).toThrow();
-        expect(CL.loadSource.bind(this, 'validButDoesNotExist.cl')).toThrow();
-      });
-
-      it("must throw immediately if the URI is invalid in asynchronous mode", function() {
-        function callback() {};
-        expect(CL.loadSource.bind(this, '', callback)).toThrow();
-        expect(CL.loadSource.bind(this, null, callback)).toThrow();
-        expect(CL.loadSource.bind(this, 'invalidURI', callback)).toThrow();
-      });
-
-      it("must return null if http request fails in asynchronous mode", function() {
-        var done = false;
-        runs(function() { 
-          CL.loadSource('validButDoesNotExist.cl', function(src) {
-            expect(src).toBeNull();
-            done = true;
-          });
-        });
-        waitsFor(function() { return done }, "http request to fail", 100);
-      });
-
-    });
-    
     it("must be able to create a Program from URI", function() {
-      var ctx = cl.createContext({ device: SELECTED_DEVICE });
       var testFunc = function() {
         var uri = 'kernels/rng.cl';
         program = ctx.createProgram({ uri: uri });
@@ -147,34 +201,102 @@ describe("Dynamic functionality", function() {
       expect(testFunc).not.toThrow();
     });
 
-    it("must be able to build kernels from URI or source", function() {
-      var ctx = cl.createContext({ device: SELECTED_DEVICE });
+    it("must have separate resources on each instance", function() {
+      var ctx1 = cl.createContext({ name: 'one' });
+      var ctx2 = cl.createContext({ name: 'two' });
+      var buffer1 = ctx1.createBuffer({ size: 1024, name: 'b1' });
+      var buffer2 = ctx2.createBuffer({ size: 2048, name: 'b2' });
+      expect(ctx1.buffers.length).toBe(1);
+      expect(ctx2.buffers.length).toBe(1);
+    });
+
+    it("Must be able to read and write Buffers", function() {
+      var input = new Float32Array(512);
+      input[12] = 3.14159;
+      var output = new Float32Array(512);
+      var queue = ctx.createCommandQueue();
+      var buffer1M = ctx.createBuffer({ size: 1024*1024 });
+      function execute() {
+        queue.enqueueWriteBuffer(buffer1M, input);
+        queue.enqueueReadBuffer(buffer1M, output);
+        queue.finish();
+        for (var i=0; i < input.length; i++) {
+          if (input[i] !== output[i]) {
+            console.log("output[i] = ", output[i]);
+            throw "input[i] !== output[i] for i="+i;
+          }
+        }
+      }
+      expect(execute).not.toThrow();
+      buffer1M.release();
+      queue.release();
+    });
+
+    it("must throw an exception on invalid input", function() {
+      var uri = 'kernels/rng.cl';
+      var src = CL.loadSource(uri);
+      expect(function() { ctx.buildKernel({ source: src, opts: '--invalid-option' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ source: 'foo' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ source: null }) }).toThrow();
+      expect(function() { ctx.buildKernel({ uri: 'foo.cl' }) }).toThrow();
+      expect(function() { ctx.buildKernel({ uri: null }) }).toThrow();
+      expect(function() { ctx.buildKernel('foo.cl') }).toThrow();
+      expect(function() { ctx.buildKernel('foo') }).toThrow();
+      expect(function() { ctx.buildKernel(null) }).toThrow();
+      expect(function() { ctx.buildKernel(0xdeadbeef) }).toThrow();
+      expect(function() { ctx.buildKernel({}) }).toThrow();
+      expect(function() { ctx.buildKernel() }).toThrow();
+    });
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  // 
+  describe("WebCLProgram", function() {
+
+    var sobel;
+
+    beforeEach(function() {
+      sobel = CL.loadSource('kernels/sobel.cl');
+      ctx = cl.createContext({ device: SELECTED_DEVICE });
+    });
+
+    afterEach(function() {
+      ctx.release();
+    });
+
+    it("must be able to build a Program", function() {
       var testFunc = function() {
-        var uri = 'kernels/rng.cl';
-        var src = CL.loadSource(uri);
-        globals.program = ctx.createProgram({ source: src });
-        globals.program.build();
-        expect('globals.program instanceof WebCLProgram').toEvalAs(true);
-        /*
-          globals.kernel1 = ctx.buildKernel({ source: src });
-          globals.kernel2 = ctx.buildKernel({ uri: 'kernels/rng.cl' });
-          globals.kernel3 = ctx.buildKernel({ uri: 'kernels/rng.cl', opts: '-cl-fast-relaxed-math' });
-          globals.kernel4 = ctx.buildKernel(src);
-          globals.kernel5 = ctx.buildKernel(uri);
-          globals.kernel6 = ctx.buildKernels(uri)[0];
-          expect('globals.kernel1 instanceof WebCLKernel').toEvaluateToTrue();
-          expect('globals.kernel2 instanceof WebCLKernel').toEvaluateToTrue();
-          expect('globals.kernel3 instanceof WebCLKernel').toEvaluateToTrue();
-          expect('globals.kernel4 instanceof WebCLKernel').toEvaluateToTrue();
-          expect('globals.kernel5 instanceof WebCLKernel').toEvaluateToTrue();
-          expect('globals.kernel6 instanceof WebCLKernel').toEvaluateToTrue();
-        */
+        program = ctx.createProgram({ source: sobel });
+        program.build();
+        expect('program instanceof WebCLProgram').toEvalAs(true);
+        expect('program.built').toEvalAs(true);
       } 
       expect(testFunc).not.toThrow();
     });
 
+    it("must be able to build a Program with compiler options", function() {
+      var testFunc = function() {
+        program = ctx.createProgram({ source: sobel });
+        program.build({ opts: '-cl-fast-relaxed-math' });
+        expect('program instanceof WebCLProgram').toEvalAs(true);
+        expect('program.built').toEvalAs(true);
+      } 
+      expect(testFunc).not.toThrow();
+    });
+
+    it("must be able to build a Kernel", function() {
+      var testFunc = function() {
+        program = ctx.createProgram({ source: sobel });
+        program.build();
+        kernel1 = program.createKernelsInProgram()[0];
+        expect('kernel1 instanceof WebCLKernel').toEvalAs(true);
+      }
+      expect(testFunc).not.toThrow();
+    });
+
     it("must be able to build kernels from PTX source on NVIDIA GPUs", function() {
-      var ctx = cl.createContext({ device: SELECTED_DEVICE });
       var testFunc = function() {
         if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
           var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
@@ -190,623 +312,468 @@ describe("Dynamic functionality", function() {
       expect(testFunc).not.toThrow();
     });
 
-    it("must throw an exception on invalid input", function() {
-      var uri = 'kernels/rng.cl';
-      var src = CL.loadSource(uri);
-      var ctx = cl.createContext();
-      expect(function() { cl.createContext({ device: 'foo' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ source: src, opts: '--invalid-option' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ source: 'foo' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ source: null }) }).toThrow();
-      expect(function() { ctx.buildKernel({ uri: 'foo.cl' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ uri: null }) }).toThrow();
-      expect(function() { ctx.buildKernel('foo.cl') }).toThrow();
-      expect(function() { ctx.buildKernel('foo') }).toThrow();
-      expect(function() { ctx.buildKernel(null) }).toThrow();
-      expect(function() { ctx.buildKernel(0xdeadbeef) }).toThrow();
-      expect(function() { ctx.buildKernel({}) }).toThrow();
-      expect(function() { ctx.buildKernel() }).toThrow();
+    // Excluded because querying PROGRAM_BINARY_SIZES crashes on Mac
+    //
+    it("Must not crash when querying Program binary sizes", function() {
+      var program = ctx.createProgram({ source: sobel });
+      program.build();
+      function getBinaries() {
+	      var sizes = program.getInfo(CL.PROGRAM_BINARY_SIZES);
+	      console.log("Size of binary executable in bytes: ", sizes[0]);
+	      return sizes;
+      }
+      expect(getBinaries).toThrow();
     });
 
-    //////////////////////////////////////////////////////////////////////////////
+    // Excluded because querying PROGRAM_BINARIES crashes on Mac
     //
-    //
-    // 
-    describe("WebCLContext", function() {
-
-      it("must be testable", function() {
-        expect(CL.DEVICES.length).toBeGreaterThan(0);
-      });
-
-      it("must be able to create a Context on any Platform", function() {
-        CL.PLATFORMS.forEach(function(plat) {
-          var ctx = cl.createContext({ platform: plat });
-          expect(ctx instanceof WebCLContext).toBeTruthy();
-          ctx.release;
-        });
-      });
-
-      it("must be able to create a Context on any Device", function() {
-        CL.DEVICES.forEach(function(dev) {
-          var ctx = cl.createContext({ device: dev });
-          expect(ctx instanceof WebCLContext).toBeTruthy();
-          ctx.release();
-        });
-      });
-
-      it("must be able to create a Context spanning all Devices on a Platform", function() {
-        CL.PLATFORMS.forEach(function(plat) {
-          var ctx = cl.createContext({ devices: plat.devices });
-          expect(ctx instanceof WebCLContext).toBeTruthy();
-          ctx.release();
-        });
-      });
-
-      it("must be able to create a CommandQueue on any Device", function() {
-        CL.DEVICES.forEach(function(dev) {
-          var ctx = cl.createContext({ device: dev });
-          var queue = ctx.createCommandQueue();
-          expect(queue instanceof WebCLCommandQueue).toBeTruthy();
-          queue.release();
-          ctx.release();
-        });
-      });
-
-      it("must be able to create two Buffers on any Device", function() {
-        CL.DEVICES.forEach(function(dev) {
-          var ctx = cl.createContext({ device: dev });
-          var buffer1M = ctx.createBuffer({ size: 1*1024*1024 });
-          var buffer2M = ctx.createBuffer({ size: 2*1024*1024 });
-          expect(buffer1M instanceof WebCLMemoryObject).toBeTruthy();
-          expect(buffer2M instanceof WebCLMemoryObject).toBeTruthy();
-          buffer1M.release();
-          buffer2M.release();
-          ctx.releaseAll();
-        });
-      });
-
-      it("must have separate resources on each instance", function() {
-        CL.DEVICES.forEach(function(dev) {
-          var ctx1 = cl.createContext({ name: 'one' });
-          var ctx2 = cl.createContext({ name: 'two' });
-          var buffer1 = ctx1.createBuffer({ size: 1024, name: 'b1' });
-          var buffer2 = ctx2.createBuffer({ size: 2048, name: 'b2' });
-          expect(ctx1.buffers.length).toBe(1);
-          expect(ctx2.buffers.length).toBe(1);
-        });
-      });
-
-      it("Must be able to read and write Buffers on any Device", function() {
-        var input = new Float32Array(512);
-        input[12] = 3.14159;
-        var output = new Float32Array(512);
-        CL.DEVICES.forEach(function(dev) {
-          var ctx = cl.createContext({ device: dev });
-          var queue = ctx.createCommandQueue();
-          var buffer1M = ctx.createBuffer({ size: 1024*1024 });
-          function execute() {
-            queue.enqueueWriteBuffer(buffer1M, input);
-            queue.enqueueReadBuffer(buffer1M, output);
-            queue.finish();
-            for (var i=0; i < input.length; i++) {
-              if (input[i] !== output[i]) {
-                console.log("output[i] = ", output[i]);
-                throw "input[i] !== output[i] for i="+i;
-              }
-            }
-          }
-          expect(execute).not.toThrow();
-          buffer1M.release();
-          queue.release();
-          ctx.release();
-        });
-      });
+    it("Must not be able to get Program binaries", function() {
+      var program = ctx.createProgram({ source: sobel });
+      program.build();
+      function getBinaries() {
+        return program.getInfo(CL.PROGRAM_BINARIES);
+      }
+      expect(getBinaries).toThrow();
     });
 
-    //////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    // 
-    describe("WebCLProgram", function() {
-
-      var sobel;
-
-      beforeEach(function() {
-        sobel = CL.loadSource('kernels/sobel.cl');
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          cl.createContext({ device: CL.DEVICES[d] });
-        }
-      });
-
-      it("must be testable", function() {
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          expect(ctx instanceof Object).toBe(true);
-        } 
-      });
-
-      it("Must be able to build a Program from source", function() {
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
-          expect(program.built).toEqual(true);
-        }
-      });
-
-      // Excluded because querying PROGRAM_BINARY_SIZES crashes on Mac
-      //
-      xit("Must not crash when querying Program binary sizes", function() {
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
-          function getBinaries() {
-	          var sizes = program.getInfo(CL.PROGRAM_BINARY_SIZES);
-	          console.log("Size of binary executable in bytes: ", sizes[0]);
-	          return sizes;
-          }
-          expect(getBinaries).toThrow();
-        }
-      });
-
-      // Excluded because querying PROGRAM_BINARIES crashes on Mac
-      //
-      xit("Must not be able to get Program binaries", function() {
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var program = ctx.buildProgram({ source: sobel });
-          function getBinaries() {
-            return program.getInfo(CL.PROGRAM_BINARIES);
-          }
-          expect(getBinaries).toThrow();
-        }
-      });
-
-      it("Must be able to create a Kernel", function() {
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var kernel = ctx.buildKernel({ source: sobel });
-          expect(kernel instanceof WebCLKernel).toBeTruthy();
-        }
-      });
-
-      xit("Must be able to create a bunch of complex Kernels from a single source file", function() {
-        var scanKernel = CL.loadSource('kernels/scan_kernel.cl');
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var kernels = ctx.buildKernels({ source: scanKernel });
-          expect(kernels.length).toEqual(5);
-        }
-      });
-
-      it("Must be able to run a Kernel", function() {
-        var results = new Float32Array(512);
-        var src = CL.loadSource('kernels/enqueueReadBuffer.cl');
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          var kernel = ctx.buildKernel({ source: src, opts: "-Werror" });
-          var queue = ctx.createCommandQueue();
-          var buffer1M = ctx.createBuffer({ size: 1024*1024 });
-          kernel.setArg(0, buffer1M);
-          function execute() {
-            queue.enqueueNDRangeKernel(kernel, 1, [], [results.length], [], []);
-            queue.finish();
-          }
-          expect(execute).not.toThrow();
-        }
-      });
-
-      it("Must support all kernel argument scalar types", function() {
-        var result = new Int8Array([127]);
-        var c = new Int8Array([-1]);
-        var s = new Int16Array([-1]);
-        var i = new Int32Array([-1]);
-        var l = new Int32Array([-1, 0]);
-        var uc = new Uint8Array([0xff]);
-        var us = new Uint16Array([0xffff]);
-        var ui = new Uint32Array([0xffffffff]);
-        var ul = new Uint32Array([0xffffffff, 0]);
-        var f32 = new Float32Array([1.0]);
-
-        var src = CL.loadSource('kernels/argtypes.cl');
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          ctx.buildKernels({ source: src, opts: "-Werror" });
-          var kernel = ctx.getKernel('scalars');
-          var queue = ctx.createCommandQueue();
-          var resbuf = ctx.createBuffer({ size: 1 });
-          function execute() {
-            kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
-            queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
-            queue.enqueueReadBuffer(resbuf, result);
-            queue.finish();
-          }
-          expect(execute).not.toThrow();
-          expect(result[0]).toEqual(0);
-        }
-      });
-
-      it("Must support all kernel argument vector types", function() {
-        var result = new Int8Array([127]);
-        var c = new Int8Array([-1, -1, -1, -1]);
-        var s = new Int16Array([-1, -1, -1, -1]);
-        var i = new Int32Array([-1, -1, -1, -1]);
-        var l = new Int32Array([-1, 0, -1, 0, -1, 0, -1, ]);
-        var uc = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
-        var us = new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]);
-        var ui = new Uint32Array([0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]);
-        var ul = new Uint32Array([0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0]);
-        var f32 = new Float32Array([1.0, 1.0, 1.0, 1.0]);
-        var src = CL.loadSource('kernels/argtypes.cl');
-        for (var d=0; d < CL.DEVICES.length; d++) {
-          var ctx = CL.DEVICES[d].contexts[0];
-          ctx.buildKernels({ source: src, opts: "-Werror" });
-          var kernel = ctx.getKernel('vectors');
-          var queue = ctx.createCommandQueue();
-          var resbuf = ctx.createBuffer({ size: 1 });
-          function execute() {
-            kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
-            queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
-            queue.enqueueReadBuffer(resbuf, result);
-            queue.finish();
-          }
-          expect(execute).not.toThrow();
-          expect(result[0]).toEqual(0);
-        }
-      });
-
-      it("must be able to release all CL resources allocated by this module", function() {
-        cl.releaseAll();
-        expect(CL.DEVICES[0].contexts.length).toEqual(0);
-      });
+    it("Must be able to create a Kernel", function() {
+      var program = ctx.buildProgram({ source: sobel });
+      program.build();
+      var kernel = program.createKernelsInProgram()[0];
+      expect(kernel instanceof WebCLKernel).toBeTruthy();
     });
+
+    it("Must be able to create a bunch of complex Kernels from a single source file", function() {
+      var scanKernel = CL.loadSource('kernels/scan_kernel.cl');
+      program = ctx.createProgram({ source: scanKernel });
+      program.build();
+      expect('program.built').toEvalAs(true);
+      expect('program.createKernelsInProgram().length').toEvalAs(5);
+    });
+
+    it("Must be able to run a Kernel", function() {
+      var results = new Float32Array(512);
+      var src = CL.loadSource('kernels/enqueueReadBuffer.cl');
+      var program = ctx.createProgram({ source: src });
+      program.build({ opts: "-Werror" });
+      var kernel = program.createKernelsInProgram()[0];
+      var queue = ctx.createCommandQueue();
+      var buffer1M = ctx.createBuffer({ size: 1024*1024 });
+      kernel.setArg(0, buffer1M);
+      function execute() {
+        queue.enqueueNDRangeKernel(kernel, 1, [], [results.length], [], []);
+        queue.finish();
+      }
+      expect(execute).not.toThrow();
+    });
+
+    it("Must support all kernel argument scalar types", function() {
+      var result = new Int8Array([127]);
+      var c = new Int8Array([-1]);
+      var s = new Int16Array([-1]);
+      var i = new Int32Array([-1]);
+      var l = new Int32Array([-1, 0]);
+      var uc = new Uint8Array([0xff]);
+      var us = new Uint16Array([0xffff]);
+      var ui = new Uint32Array([0xffffffff]);
+      var ul = new Uint32Array([0xffffffff, 0]);
+      var f32 = new Float32Array([1.0]);
+
+      var src = CL.loadSource('kernels/argtypes.cl');
+      for (var d=0; d < CL.DEVICES.length; d++) {
+        var ctx = CL.DEVICES[d].contexts[0];
+        ctx.buildKernels({ source: src, opts: "-Werror" });
+        var kernel = ctx.getKernel('scalars');
+        var queue = ctx.createCommandQueue();
+        var resbuf = ctx.createBuffer({ size: 1 });
+        function execute() {
+          kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
+          queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
+          queue.enqueueReadBuffer(resbuf, result);
+          queue.finish();
+        }
+        expect(execute).not.toThrow();
+        expect(result[0]).toEqual(0);
+      }
+    });
+
+    it("Must support all kernel argument vector types", function() {
+      var result = new Int8Array([127]);
+      var c = new Int8Array([-1, -1, -1, -1]);
+      var s = new Int16Array([-1, -1, -1, -1]);
+      var i = new Int32Array([-1, -1, -1, -1]);
+      var l = new Int32Array([-1, 0, -1, 0, -1, 0, -1, ]);
+      var uc = new Uint8Array([0xff, 0xff, 0xff, 0xff]);
+      var us = new Uint16Array([0xffff, 0xffff, 0xffff, 0xffff]);
+      var ui = new Uint32Array([0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff]);
+      var ul = new Uint32Array([0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0]);
+      var f32 = new Float32Array([1.0, 1.0, 1.0, 1.0]);
+      var src = CL.loadSource('kernels/argtypes.cl');
+      for (var d=0; d < CL.DEVICES.length; d++) {
+        var ctx = CL.DEVICES[d].contexts[0];
+        ctx.buildKernels({ source: src, opts: "-Werror" });
+        var kernel = ctx.getKernel('vectors');
+        var queue = ctx.createCommandQueue();
+        var resbuf = ctx.createBuffer({ size: 1 });
+        function execute() {
+          kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
+          queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
+          queue.enqueueReadBuffer(resbuf, result);
+          queue.finish();
+        }
+        expect(execute).not.toThrow();
+        expect(result[0]).toEqual(0);
+      }
+    });
+
   });
+});
+
+//////////////////////////////////////////////////////////////////////////////
+//
+//
+// 
+xdescribe("Performance", function() {
+
+  var CTX = null;
+  var cl = null; 
+
+  beforeEach(function() {
+    console.log("WebCL Performance test suite - beforeEach()");
+    if (!cl) {
+      cl = new CL({ debug: false, cleanup: false });
+      sobel = CL.loadSource('kernels/sobel.cl');
+    }
+    for (var d=0; d < CL.DEVICES.length; d++) {
+      cl.createContext({ device: CL.DEVICES[d] });
+    }
+    CTX = SELECTED_DEVICE.contexts[0];
+  });
+
+  afterEach(function() {
+    console.log("WebCL Performance test suite - afterEach()");
+    cl.releaseAll();
+  });
+
+  function calibrate(kernel, worksize) {
+    var iter = 1;
+    var msec = exec(kernel, worksize, iter).msec;
+    while (msec < 50) {
+      iter *= 2;
+      msec = exec(kernel, worksize, iter).msec;
+    }
+    return iter;
+  };
+
+  function validate(kernel1, kernel2, worksize) {
+    var res1 = new Float32Array(worksize);
+    var res2 = new Float32Array(worksize);
+    var queue = kernel1.context.queues[0];
+    exec(kernel1, worksize, 1);
+    queue.enqueueReadBuffer('buffer16M', res1);
+    exec(kernel2, worksize, 1);
+    queue.enqueueReadBuffer('buffer16M', res2);
+    for (var i=0, diff=0; i < worksize; i++) {
+      diff += Math.abs(res2[i] - res1[i]);
+    }
+    return diff / worksize;
+  };
+
+  function exec(kernel, worksize, iter) {
+    var success = false;
+    var queue = kernel.context.queues[0];
+    var t1 = Date.now();
+    try {
+      for (var i=0; i < (iter || 1); i++) {
+        queue.enqueueKernel(kernel, [worksize]);
+      }
+      queue.finish();
+      success = true;
+    } catch (e) {
+      console.log(e);
+    }
+    var t2 = Date.now();
+    var stats = {
+      vendor : kernel.context.device.platform.vendor,
+      device : kernel.context.device.name,
+      msec : (success? t2-t1 : Number.NaN),
+    }
+    return stats;
+  };
 
   //////////////////////////////////////////////////////////////////////////////
   //
   //
   // 
-  xdescribe("Performance", function() {
-
-    var CTX = null;
-    var cl = null; 
+  describe("Math built-ins", function() {
+    
+    var BUFFERSIZE = 1e6;
 
     beforeEach(function() {
-      console.log("WebCL Performance test suite - beforeEach()");
-      if (!cl) {
-        cl = new CL({ debug: false, cleanup: false });
-        sobel = CL.loadSource('kernels/sobel.cl');
-      }
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        cl.createContext({ device: CL.DEVICES[d] });
-      }
-      CTX = SELECTED_DEVICE.contexts[0];
+      console.log("WebCL Performance Math built-ins - beforeEach(): CTX = ", CTX);
+      CTX.createBuffer({ size: BUFFERSIZE, name: 'buffer16M' });
+      CTX.buildKernels('kernels/builtin-math.cl');
+      CTX.createCommandQueue();
     });
 
     afterEach(function() {
-      console.log("WebCL Performance test suite - afterEach()");
-      cl.releaseAll();
-    });
-
-    function calibrate(kernel, worksize) {
-      var iter = 1;
-      var msec = exec(kernel, worksize, iter).msec;
-      while (msec < 50) {
-        iter *= 2;
-        msec = exec(kernel, worksize, iter).msec;
-      }
-      return iter;
-    };
-
-    function validate(kernel1, kernel2, worksize) {
-      var res1 = new Float32Array(worksize);
-      var res2 = new Float32Array(worksize);
-      var queue = kernel1.context.queues[0];
-      exec(kernel1, worksize, 1);
-      queue.enqueueReadBuffer('buffer16M', res1);
-      exec(kernel2, worksize, 1);
-      queue.enqueueReadBuffer('buffer16M', res2);
-      for (var i=0, diff=0; i < worksize; i++) {
-        diff += Math.abs(res2[i] - res1[i]);
-      }
-      return diff / worksize;
-    };
-
-    function exec(kernel, worksize, iter) {
-      var success = false;
-      var queue = kernel.context.queues[0];
-      var t1 = Date.now();
-      try {
-        for (var i=0; i < (iter || 1); i++) {
-          queue.enqueueKernel(kernel, [worksize]);
-        }
-        queue.finish();
-        success = true;
-      } catch (e) {
-        console.log(e);
-      }
-      var t2 = Date.now();
-      var stats = {
-        vendor : kernel.context.device.platform.vendor,
-        device : kernel.context.device.name,
-        msec : (success? t2-t1 : Number.NaN),
-      }
-      return stats;
-    };
-
-    //////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    // 
-    describe("Math built-ins", function() {
-      
-      var BUFFERSIZE = 1e6;
-
-      beforeEach(function() {
-        console.log("WebCL Performance Math built-ins - beforeEach(): CTX = ", CTX);
-        CTX.createBuffer({ size: BUFFERSIZE, name: 'buffer16M' });
-        CTX.buildKernels('kernels/builtin-math.cl');
-        CTX.createCommandQueue();
-      });
-
-      afterEach(function() {
-        console.log("WebCL Performance Math built-ins - afterEach()");
-        //CTX.releaseAll();
-      });
-      
-      it("hypot() should be faster than a custom implementation", function() {
-        var faster = CTX.getKernel('hypotBuiltin');
-        var slower = CTX.getKernel('hypotCustom');
-        faster.setArgs('buffer16M');
-        slower.setArgs('buffer16M');
-        var SAD = validate(faster, slower, BUFFERSIZE/4);
-        expect(SAD).toBeCloseTo(0, 2);
-        //var iter = calibrate(faster, BUFFERSIZE/4);
-        var msecFaster = exec(faster, BUFFERSIZE/4, 1000).msec;
-        //var msecSlower = exec(slower, BUFFERSIZE/4, 100).msec;
-        //console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
-        //expect(msecFaster).toBeLessThan(msecSlower);
-      });
-
-      it("sincos() should be faster than sin() + cos()", function() {
-        var faster = CTX.getKernel('sinCosCombined');
-        var slower = CTX.getKernel('sinCosSeparate');
-        faster.setArgs('buffer16M');
-        slower.setArgs('buffer16M');
-        var SAD = validate(faster, slower, BUFFERSIZE/4);
-        expect(SAD).toBeCloseTo(0, 5);
-        var iter = calibrate(faster, BUFFERSIZE/4);
-        var msecFaster = exec(faster, BUFFERSIZE/4, iter).msec;
-        var msecSlower = exec(slower, BUFFERSIZE/4, iter).msec;
-        console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
-        expect(msecFaster).toBeLessThan(msecSlower);
-      });
+      console.log("WebCL Performance Math built-ins - afterEach()");
+      //CTX.releaseAll();
     });
     
-    //////////////////////////////////////////////////////////////////////////////
-    //
-    //
-    // 
-    describe("OOB memory protection", function() {
+    it("hypot() should be faster than a custom implementation", function() {
+      var faster = CTX.getKernel('hypotBuiltin');
+      var slower = CTX.getKernel('hypotCustom');
+      faster.setArgs('buffer16M');
+      slower.setArgs('buffer16M');
+      var SAD = validate(faster, slower, BUFFERSIZE/4);
+      expect(SAD).toBeCloseTo(0, 2);
+      //var iter = calibrate(faster, BUFFERSIZE/4);
+      var msecFaster = exec(faster, BUFFERSIZE/4, 1000).msec;
+      //var msecSlower = exec(slower, BUFFERSIZE/4, 100).msec;
+      //console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
+      //expect(msecFaster).toBeLessThan(msecSlower);
+    });
 
-      describe("Random Number Benchmark", function() {
+    it("sincos() should be faster than sin() + cos()", function() {
+      var faster = CTX.getKernel('sinCosCombined');
+      var slower = CTX.getKernel('sinCosSeparate');
+      faster.setArgs('buffer16M');
+      slower.setArgs('buffer16M');
+      var SAD = validate(faster, slower, BUFFERSIZE/4);
+      expect(SAD).toBeCloseTo(0, 5);
+      var iter = calibrate(faster, BUFFERSIZE/4);
+      var msecFaster = exec(faster, BUFFERSIZE/4, iter).msec;
+      var msecSlower = exec(slower, BUFFERSIZE/4, iter).msec;
+      console.info(this.description + ": Expecting " + msecFaster + " to be less than " + msecSlower);
+      expect(msecFaster).toBeLessThan(msecSlower);
+    });
+  });
+  
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  // 
+  describe("OOB memory protection", function() {
 
-        it("should be 1000x faster than JavaScript (handwritten asm.js)", function() {
-          var BUFFERSIZE = 16*1024*1024;
-          var WORKSIZE = BUFFERSIZE / 4;
-          var JS_HANDICAP = 256;
-          var HEAP = new ArrayBuffer(BUFFERSIZE/JS_HANDICAP);
-          var rng = RNGModule(window, null, HEAP);
-          var t1 = Date.now();
-          rng(HEAP.byteLength, 0xdeadbeef, 5);
-          var msJavaScript = (Date.now() - t1) * JS_HANDICAP;
-          var heapView = new Uint8Array(HEAP);
-          console.log("HEAP[t1 % HEAP.length]", heapView[t1 % heapView.length]);
+    describe("Random Number Benchmark", function() {
 
-          var srcMemProtectOn = CL.loadSource('kernels/rng2.safe.cl');
-          var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
-          var buffer16M = CTX.createBuffer({ size: BUFFERSIZE });
-          var queue = CTX.createCommandQueue();
-          memProtectOn.setArgs(buffer16M, new Uint32Array([WORKSIZE, 0]), new Uint32Array([0xdeadbeef]));
-          var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
-          var slowdown = (msJavaScript / msProtected).toFixed(2);
-          console.log(CTX.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
-          expect(slowdown).toBeGreaterThan(1000.0);
+      it("should be 1000x faster than JavaScript (handwritten asm.js)", function() {
+        var BUFFERSIZE = 16*1024*1024;
+        var WORKSIZE = BUFFERSIZE / 4;
+        var JS_HANDICAP = 256;
+        var HEAP = new ArrayBuffer(BUFFERSIZE/JS_HANDICAP);
+        var rng = RNGModule(window, null, HEAP);
+        var t1 = Date.now();
+        rng(HEAP.byteLength, 0xdeadbeef, 5);
+        var msJavaScript = (Date.now() - t1) * JS_HANDICAP;
+        var heapView = new Uint8Array(HEAP);
+        console.log("HEAP[t1 % HEAP.length]", heapView[t1 % heapView.length]);
 
-          function RNGModule(stdlib, foreign, heap) {
-            "use asm"
+        var srcMemProtectOn = CL.loadSource('kernels/rng2.safe.cl');
+        var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
+        var buffer16M = CTX.createBuffer({ size: BUFFERSIZE });
+        var queue = CTX.createCommandQueue();
+        memProtectOn.setArgs(buffer16M, new Uint32Array([WORKSIZE, 0]), new Uint32Array([0xdeadbeef]));
+        var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
+        var slowdown = (msJavaScript / msProtected).toFixed(2);
+        console.log(CTX.device.version, "-- speedup compared to JavaScript:", slowdown, "(", msProtected, "vs.", msJavaScript, ")");
+        expect(slowdown).toBeGreaterThan(1000.0);
 
-            var ITER = 15;
-            var k0 = 0xA341316C;
-            var k1 = 0xC8013EA4;
-            var k2 = 0xAD90777D;
-            var k3 = 0x7E95761E;
-            var delta = 0x9E3779B9;
-            var dst = new stdlib.Uint8Array(heap);
-            var i=0, j=0, k=0, x=0, y=0, r=0, g=0, sum=0, idx=0;
+        function RNGModule(stdlib, foreign, heap) {
+          "use asm"
 
-            function rng(worksize, seed, iter) {
-              worksize = worksize|0;
-              seed = seed|0;
-              iter = iter|0;
-              ITER = ITER|0;
-              k0 = k0|0;
-              k1 = k1|0
-              k2 = k2|0
-              k3 = k3|0
-              delta = delta|0;
-              for (k=0; (k|0) < (iter|0); k = (k+1)|0) {
-                for (i=0; (i|0) < (worksize|0); i = (i+1)|0) {
-                  x = seed;
-                  y = x << 3;
-                  x = x|0 + (i + (i << 11) + (i << 19));
-                  y = y|0 + (i + (i << 9) + (i << 21));
-                  sum = 0;
-                  for (j=0; (j|0) < (ITER|0); j = (j+1)|0) {
-                    sum = (sum + delta)|0;
-                    x = x|0 + ((y << 4) + k0) & (y + sum) & ((y >>> 5) + k1);
-                    y = y|0 + ((x << 4) + k2) & (x + sum) & ((x >>> 5) + k3);
-                  }
-                  r = (x & 0x00ff);
-                  g = (x & 0xff00) >>> 8;
-                  idx = (i << 2)|0;
-                  dst[idx      ] = r;
-                  dst[idx + 1|0] = r;
-                  dst[idx + 2|0] = r;
-                  dst[idx + 3|0] = g;
+          var ITER = 15;
+          var k0 = 0xA341316C;
+          var k1 = 0xC8013EA4;
+          var k2 = 0xAD90777D;
+          var k3 = 0x7E95761E;
+          var delta = 0x9E3779B9;
+          var dst = new stdlib.Uint8Array(heap);
+          var i=0, j=0, k=0, x=0, y=0, r=0, g=0, sum=0, idx=0;
+
+          function rng(worksize, seed, iter) {
+            worksize = worksize|0;
+            seed = seed|0;
+            iter = iter|0;
+            ITER = ITER|0;
+            k0 = k0|0;
+            k1 = k1|0
+            k2 = k2|0
+            k3 = k3|0
+            delta = delta|0;
+            for (k=0; (k|0) < (iter|0); k = (k+1)|0) {
+              for (i=0; (i|0) < (worksize|0); i = (i+1)|0) {
+                x = seed;
+                y = x << 3;
+                x = x|0 + (i + (i << 11) + (i << 19));
+                y = y|0 + (i + (i << 9) + (i << 21));
+                sum = 0;
+                for (j=0; (j|0) < (ITER|0); j = (j+1)|0) {
+                  sum = (sum + delta)|0;
+                  x = x|0 + ((y << 4) + k0) & (y + sum) & ((y >>> 5) + k1);
+                  y = y|0 + ((x << 4) + k2) & (x + sum) & ((x >>> 5) + k3);
                 }
+                r = (x & 0x00ff);
+                g = (x & 0xff00) >>> 8;
+                idx = (i << 2)|0;
+                dst[idx      ] = r;
+                dst[idx + 1|0] = r;
+                dst[idx + 2|0] = r;
+                dst[idx + 3|0] = g;
               }
-            };
+            }
+          };
 
-            return rng;
-          }
-        });
-
-        it("should have less than 5x protection overhead", function() {
-          var srcMemProtectOff = CL.loadSource('kernels/rng2.cl');
-          var srcMemProtectOn = CL.loadSource('kernels/rng2.safe.cl');
-          var memProtectOff = CTX.buildKernel({ source: srcMemProtectOff });
-          var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
-          var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
-          var queue = CTX.createCommandQueue();
-          var BUFFERSIZE = buffer16M.size / 4;
-          var WORKSIZE = BUFFERSIZE;
-          memProtectOff.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          memProtectOn.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
-          var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
-          var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
-          var slowdown = (msProtected / msUnprotected).toFixed(2);
-          console.log(CTX.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
-          expect(slowdown).toBeLessThan(5.0);
-        });
-
-        it("should be faster using uint4 than uint[4]", function() {
-          var src1 = CL.loadSource('kernels/rng.cl');
-          var src2 = CL.loadSource('kernels/rng2.cl');
-          var src1s = CL.loadSource('kernels/rng.safe.cl');
-          var src2s = CL.loadSource('kernels/rng2.safe.cl');
-          var kernel1 = CTX.buildKernel({ source: src1 });
-          var kernel2 = CTX.buildKernel({ source: src2 });
-          var kernel1s = CTX.buildKernel({ source: src1s });
-          var kernel2s = CTX.buildKernel({ source: src2s });
-          var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
-          var queue = CTX.createCommandQueue();
-          var BUFFERSIZE = buffer16M.size / 4;
-          var WORKSIZE = BUFFERSIZE;
-          kernel1.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          kernel2.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
-          kernel1s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
-          kernel2s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
-          var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
-          var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
-          var msKernel1s = exec(kernel1s, WORKSIZE, 5).msec;
-          var msKernel2s = exec(kernel2s, WORKSIZE, 5).msec;
-          console.log(CTX.device.version);
-          console.log("  array unsafe :", msKernel1);
-          console.log("  vector unsafe:", msKernel2);
-          console.log("  array safe   :", msKernel1s);
-          console.log("  vector safe  :", msKernel2s);
-          var slowdownSafe = (msKernel1s / msKernel2s).toFixed(2);
-          var slowdownUnsafe = (msKernel1 / msKernel2).toFixed(2);
-          var protectionOverheadArray = (msKernel1s / msKernel1).toFixed(2);
-          var protectionOverheadVector = (msKernel2s / msKernel2).toFixed(2);
-          console.log("  protection overhead when using uint[4]:", protectionOverheadArray);
-          console.log("  protection overhead when using uint4:", protectionOverheadVector);
-          expect(msKernel1s).toBeGreaterThan(msKernel2s);
-        });
+          return rng;
+        }
       });
 
-      it("should have less than 5x overhead in Awesomize Benchmark", function() {
-        var srcMemProtectOff = CL.loadSource('kernels/complete_transformation.cl');
-        var srcMemProtectOn = CL.loadSource('kernels/complete_transformation.safe.cl');
+      it("should have less than 5x protection overhead", function() {
+        var srcMemProtectOff = CL.loadSource('kernels/rng2.cl');
+        var srcMemProtectOn = CL.loadSource('kernels/rng2.safe.cl');
         var memProtectOff = CTX.buildKernel({ source: srcMemProtectOff });
         var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
-        var WORKSIZE = 1024*1024;
-        var GROUPSIZE = Math.max(memProtectOn.workGroupSize, memProtectOff.workGroupSize);
-        var bufferInput = CTX.createBuffer({ size: 16*WORKSIZE });    // sizeof(float4)=16
-        var bufferOutput = CTX.createBuffer({ size: 16*WORKSIZE });
-        var bufferConst = CTX.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
+        var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
         var queue = CTX.createCommandQueue();
-        memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, new Uint32Array([GROUPSIZE*16]));
-        memProtectOn.setArgs(bufferInput, new Uint32Array([WORKSIZE, 0]),
-                             bufferOutput, new Uint32Array([WORKSIZE, 0]),
-                             bufferConst, new Uint32Array([WORKSIZE, 0]),
-                             new Uint32Array([GROUPSIZE*16]), new Uint32Array([GROUPSIZE, 0]));
-
-        var msUnprotected = exec(memProtectOff, WORKSIZE).msec;
-        var msProtected = exec(memProtectOn, WORKSIZE).msec;
-        var slowdown = (msProtected / (msUnprotected || 1.0)).toFixed(2);
+        var BUFFERSIZE = buffer16M.size / 4;
+        var WORKSIZE = BUFFERSIZE;
+        memProtectOff.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
+        memProtectOn.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
+        var msUnprotected = exec(memProtectOff, WORKSIZE, 5).msec;
+        var msProtected = exec(memProtectOn, WORKSIZE, 5).msec;
+        var slowdown = (msProtected / msUnprotected).toFixed(2);
         console.log(CTX.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
         expect(slowdown).toBeLessThan(5.0);
       });
 
-      it("should have less than 2x overhead in Benchmark #3 (NVIDIA PTX only)", function() {
-        var srcOriginal = CL.loadSource('kernels/synthetic_case.O3.sm_21.ptx?foo.cl');
-        var srcProtected = CL.loadSource('kernels/synthetic_case.O3.clamped.O3.sm_21.ptx?foo.cl');
-        if (CTX.device.platform.vendor.indexOf("NVIDIA") !== -1 || CTX.device.vendor.indexOf("NVIDIA") !== -1) {
-          var defs = { KERNEL_LOOP_COUNT : 64, PRIVATE_BUFFER_SIZE : 128 };
-          var kernelOriginal = CTX.buildKernel({ ptx: srcOriginal });
-          var kernelProtected = CTX.buildKernel({ ptx: srcProtected });
-          var buffer = CTX.createBuffer({ size: 16*1024*1024 });
-          var queue = CTX.createCommandQueue();
-          var BUFFERSIZE = buffer.size / 4;
-          var WORKSIZE = BUFFERSIZE / defs.KERNEL_LOOP_COUNT;
-          kernelOriginal.setArgs(buffer, new Uint32Array([BUFFERSIZE]), buffer, new Uint32Array([BUFFERSIZE]));
-          kernelProtected.setArgs(buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]), 
-                                  buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]));
-          var msecOriginal = exec(kernelOriginal, WORKSIZE, 4).msec;
-          var msecProtected = exec(kernelProtected, WORKSIZE, 4).msec;
-          var slowdown = (msecProtected / msecOriginal).toFixed(2);
-          console.log("Slowdown from memory protection:", slowdown);
-          expect(slowdown).toBeLessThan(2.0);
-        }
+      it("should be faster using uint4 than uint[4]", function() {
+        var src1 = CL.loadSource('kernels/rng.cl');
+        var src2 = CL.loadSource('kernels/rng2.cl');
+        var src1s = CL.loadSource('kernels/rng.safe.cl');
+        var src2s = CL.loadSource('kernels/rng2.safe.cl');
+        var kernel1 = CTX.buildKernel({ source: src1 });
+        var kernel2 = CTX.buildKernel({ source: src2 });
+        var kernel1s = CTX.buildKernel({ source: src1s });
+        var kernel2s = CTX.buildKernel({ source: src2s });
+        var buffer16M = CTX.createBuffer({ size: 16*1024*1024 });
+        var queue = CTX.createCommandQueue();
+        var BUFFERSIZE = buffer16M.size / 4;
+        var WORKSIZE = BUFFERSIZE;
+        kernel1.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
+        kernel2.setArgs(buffer16M, new Uint32Array([0xdeadbeef]));
+        kernel1s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
+        kernel2s.setArgs(buffer16M, new Uint32Array([BUFFERSIZE, 0]), new Uint32Array([0xdeadbeef]));
+        var msKernel1 = exec(kernel1, WORKSIZE, 5).msec;
+        var msKernel2 = exec(kernel2, WORKSIZE, 5).msec;
+        var msKernel1s = exec(kernel1s, WORKSIZE, 5).msec;
+        var msKernel2s = exec(kernel2s, WORKSIZE, 5).msec;
+        console.log(CTX.device.version);
+        console.log("  array unsafe :", msKernel1);
+        console.log("  vector unsafe:", msKernel2);
+        console.log("  array safe   :", msKernel1s);
+        console.log("  vector safe  :", msKernel2s);
+        var slowdownSafe = (msKernel1s / msKernel2s).toFixed(2);
+        var slowdownUnsafe = (msKernel1 / msKernel2).toFixed(2);
+        var protectionOverheadArray = (msKernel1s / msKernel1).toFixed(2);
+        var protectionOverheadVector = (msKernel2s / msKernel2).toFixed(2);
+        console.log("  protection overhead when using uint[4]:", protectionOverheadArray);
+        console.log("  protection overhead when using uint4:", protectionOverheadVector);
+        expect(msKernel1s).toBeGreaterThan(msKernel2s);
       });
     });
-  });
 
-  //////////////////////////////////////////////////////////////
+    it("should have less than 5x overhead in Awesomize Benchmark", function() {
+      var srcMemProtectOff = CL.loadSource('kernels/complete_transformation.cl');
+      var srcMemProtectOn = CL.loadSource('kernels/complete_transformation.safe.cl');
+      var memProtectOff = CTX.buildKernel({ source: srcMemProtectOff });
+      var memProtectOn = CTX.buildKernel({ source: srcMemProtectOn });
+      var WORKSIZE = 1024*1024;
+      var GROUPSIZE = Math.max(memProtectOn.workGroupSize, memProtectOff.workGroupSize);
+      var bufferInput = CTX.createBuffer({ size: 16*WORKSIZE });    // sizeof(float4)=16
+      var bufferOutput = CTX.createBuffer({ size: 16*WORKSIZE });
+      var bufferConst = CTX.createBuffer({ flags: CL.MEM_READ_ONLY, size: 16*WORKSIZE });
+      var queue = CTX.createCommandQueue();
+      memProtectOff.setArgs(bufferInput, bufferOutput, bufferConst, new Uint32Array([GROUPSIZE*16]));
+      memProtectOn.setArgs(bufferInput, new Uint32Array([WORKSIZE, 0]),
+                           bufferOutput, new Uint32Array([WORKSIZE, 0]),
+                           bufferConst, new Uint32Array([WORKSIZE, 0]),
+                           new Uint32Array([GROUPSIZE*16]), new Uint32Array([GROUPSIZE, 0]));
 
-  xdescribe("Generic JavaScript performance tests", function() {
-
-    it("clearing an Array by setting its length to zero should be faster than allocating a new Array", function() {
-      var ITER = 1e6;
-
-      var myArray2 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
-      var t3 = Date.now();
-      for (var i=0; i < ITER; i++) {
-        myArray2 = [];
-        for (var j=0; j < 10; j++) {
-          myArray2[j] = j;
-        }
-      }
-      var t4 = Date.now();
-      var method2 = t4-t3;
-
-      var myArray1 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
-      var t1 = Date.now();
-      for (var i=0; i < ITER; i++) {
-        myArray1.length = 0;
-        for (var j=0; j < 10; j++) {
-          myArray1[j] = j;
-        }
-      }
-      var t2 = Date.now();
-      var method1 = t2-t1;
-      
-      var myArray3 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
-      var t5 = Date.now();
-      for (var i=0; i < ITER; i++) {
-        for (var j=0; j < 10; j++) {
-          myArray3[j] = j;
-        }
-      }
-      var t6 = Date.now();
-      var method3 = t6-t5;
-
-      console.log("Using myarray.length=0:", method1);
-      console.log("Using myarray = []:", method2);
-      console.log("Baseline (don't clear): ", method3);
+      var msUnprotected = exec(memProtectOff, WORKSIZE).msec;
+      var msProtected = exec(memProtectOn, WORKSIZE).msec;
+      var slowdown = (msProtected / (msUnprotected || 1.0)).toFixed(2);
+      console.log(CTX.device.version, "-- slowdown from memory protection:", slowdown, "(", msUnprotected, "vs.", msProtected, ")");
+      expect(slowdown).toBeLessThan(5.0);
     });
 
+    it("should have less than 2x overhead in Benchmark #3 (NVIDIA PTX only)", function() {
+      var srcOriginal = CL.loadSource('kernels/synthetic_case.O3.sm_21.ptx?foo.cl');
+      var srcProtected = CL.loadSource('kernels/synthetic_case.O3.clamped.O3.sm_21.ptx?foo.cl');
+      if (CTX.device.platform.vendor.indexOf("NVIDIA") !== -1 || CTX.device.vendor.indexOf("NVIDIA") !== -1) {
+        var defs = { KERNEL_LOOP_COUNT : 64, PRIVATE_BUFFER_SIZE : 128 };
+        var kernelOriginal = CTX.buildKernel({ ptx: srcOriginal });
+        var kernelProtected = CTX.buildKernel({ ptx: srcProtected });
+        var buffer = CTX.createBuffer({ size: 16*1024*1024 });
+        var queue = CTX.createCommandQueue();
+        var BUFFERSIZE = buffer.size / 4;
+        var WORKSIZE = BUFFERSIZE / defs.KERNEL_LOOP_COUNT;
+        kernelOriginal.setArgs(buffer, new Uint32Array([BUFFERSIZE]), buffer, new Uint32Array([BUFFERSIZE]));
+        kernelProtected.setArgs(buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]), 
+                                buffer, new Uint32Array([BUFFERSIZE]), new Uint32Array([BUFFERSIZE]));
+        var msecOriginal = exec(kernelOriginal, WORKSIZE, 4).msec;
+        var msecProtected = exec(kernelProtected, WORKSIZE, 4).msec;
+        var slowdown = (msecProtected / msecOriginal).toFixed(2);
+        console.log("Slowdown from memory protection:", slowdown);
+        expect(slowdown).toBeLessThan(2.0);
+      }
+    });
   });
+});
+
+//////////////////////////////////////////////////////////////
+
+xdescribe("Generic JavaScript performance tests", function() {
+
+  it("clearing an Array by setting its length to zero should be faster than allocating a new Array", function() {
+    var ITER = 1e6;
+
+    var myArray2 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
+    var t3 = Date.now();
+    for (var i=0; i < ITER; i++) {
+      myArray2 = [];
+      for (var j=0; j < 10; j++) {
+        myArray2[j] = j;
+      }
+    }
+    var t4 = Date.now();
+    var method2 = t4-t3;
+
+    var myArray1 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
+    var t1 = Date.now();
+    for (var i=0; i < ITER; i++) {
+      myArray1.length = 0;
+      for (var j=0; j < 10; j++) {
+        myArray1[j] = j;
+      }
+    }
+    var t2 = Date.now();
+    var method1 = t2-t1;
+    
+    var myArray3 = [ 1, 2, 3, 4, 5, 6, { foo: 'bar' }, 8, 9, 10 ];
+    var t5 = Date.now();
+    for (var i=0; i < ITER; i++) {
+      for (var j=0; j < 10; j++) {
+        myArray3[j] = j;
+      }
+    }
+    var t6 = Date.now();
+    var method3 = t6-t5;
+
+    console.log("Using myarray.length=0:", method1);
+    console.log("Using myarray = []:", method2);
+    console.log("Baseline (don't clear): ", method3);
+  });
+
 });
 
