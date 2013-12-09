@@ -328,7 +328,8 @@
             break;
           case 'string':
             props.uri = parameters.endsWith(".cl") ? parameters : null;
-            props.source = CL.loadSource(props.uri) || parameters;
+            props.source = parameters.endsWith(".cl") ? null : parameters;
+            props.source = props.source || CL.loadSource(props.uri);
             break;
           default:
             throw "WebCLContext.createProgram: Expected String or Object";
@@ -357,7 +358,6 @@
         if (this.name === undefined) {
           this.release();
         } else {
-          console.log("Context.releaseAll");
           clearArray(this.programs);
           clearArray(this.queues);
           clearArray(this.buffers);
@@ -370,13 +370,13 @@
     //
     (function augmentWebCLCommandQueue() {
 
-      var _enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
-      var _enqueueReadBuffer = WebCLCommandQueue.prototype.enqueueReadBuffer;
+      WebCLCommandQueue.prototype._enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
+      WebCLCommandQueue.prototype._enqueueReadBuffer = WebCLCommandQueue.prototype.enqueueReadBuffer;
 
       WebCLCommandQueue.prototype.enqueueWriteBuffer = function(dstBuffer, srcArray) {
         var dstBuffer = (typeof dstBuffer === 'string') ? this.context.getBuffer(dstBuffer) : dstBuffer;
         var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-        var event = _enqueueWriteBuffer.call(this, dstBuffer, false, 0, numBytes, srcArray, []);
+        var event = this._enqueueWriteBuffer.call(this, dstBuffer, false, 0, numBytes, srcArray, []);
         this.events.push(event);
         return event;
       };
@@ -384,12 +384,22 @@
       WebCLCommandQueue.prototype.enqueueReadBuffer = function(srcBuffer, dstArray) {
         var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
         var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-        var event = _enqueueReadBuffer.call(this, srcBuffer, false, 0, numBytes, dstArray, []);
+        var event = this._enqueueReadBuffer.call(this, srcBuffer, false, 0, numBytes, dstArray, []);
         this.events.push(event);
         return event;
       };
+
+      WebCLCommandQueue.prototype.releaseAll = function() {
+        clearArray(this.events);
+        this.release();
+      };
     })();
 
+    // ### WebCLBuffer ###
+    //
+    (function augmentWebCLBuffer() {
+      WebCLBuffer.prototype.releaseAll = WebCLBuffer.prototype.release;
+    })();
 
     // ### WebCLProgram ###
     //
@@ -403,19 +413,18 @@
       WebCLProgram.prototype.device = null;
       WebCLProgram.prototype.platform = null;
 
-      var _buildProgram = WebCLProgram.prototype.build;
-      var _release = WebCLProgram.prototype.releaseCLResources;
+      WebCLProgram.prototype._build = WebCLProgram.prototype.build;
 
       WebCLProgram.prototype.build = function(parameters) {
         parameters = parameters || {};
         var self = this;
         this.compilerOpts = parameters.opts || "";
         this.compilerDefs = "";
-        for (var d in parameters.defines) {
-          this.compilerDefs += "-D" + d + "=" + parameters.defines[d] + " ";
+        for (var d in parameters.defs) {
+          this.compilerDefs += "-D " + d + "=" + parameters.defs[d] + " ";
         }
         try {
-          _buildProgram.call(this, [this.device], this.compilerDefs + this.compilerOpts);
+          this._build.call(this, [this.device], this.compilerDefs + this.compilerOpts);
           if (this.getBuildStatus() === CL.BUILD_SUCCESS) {
             this.kernels = kernelFactory();
             if (this.kernels.length > 0) {
@@ -431,6 +440,7 @@
           console.log("[" + this.platform.vendor + "]", e, info);
           throw e + info;
         }
+        return this;
 
         function kernelFactory() {
           var kernels = self.createKernelsInProgram();
@@ -484,7 +494,6 @@
       WebCLKernel.prototype.releaseAll = WebCLKernel.prototype.release;
 
       var _setArg = WebCLKernel.prototype.setArg;
-      var _release = WebCLKernel.prototype.releaseCLResources;
 
       WebCLKernel.prototype.setArg = function(index, value) {
         var isMemObject = (value instanceof WebCLMemoryObject);
@@ -509,6 +518,12 @@
       };
     })();
 
+    // ### WebCLEvent ###
+    //
+    (function augmentWebCLEvent() {
+      WebCLEvent.prototype.releaseAll = WebCLEvent.prototype.release;
+    })();
+
   })();
 
   ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -516,44 +531,34 @@
   // ## Private helper functions ##
 
   // [PRIVATE] Retrieves the object by the given `name` from `theArray`.  Returns `null` if no
-  // object by that name is found.
+  // object by that name is found.  Will fail if `theArray` is not an Array or contains anything
+  // else than CL.js objects.
   //
   function getFromArray(theArray, name) {
-    for (var i=0; i < theArray.length; i++) {
-      if (theArray[i].name === name) {
-        return theArray[i];
-      }
-    }
-    return null;
+    theArray = theArray || [];
+    var allMatching = theArray.filter(function(elem) { return elem.name === name; });
+    return allMatching[0] || null;
   };
 
   // [PRIVATE] Removes all CL objects in `theArray` and releases their native resources.  Will fail
   // if `theArray` is not an Array or contains anything else than CL.js objects.
   //
   function clearArray(theArray) {
-    if (theArray && theArray.length > 0) {
-      for (var i=0; i < theArray.length; i++) {
-        if (theArray[i] && theArray[i].releaseAll) {
-          theArray[i].releaseAll();
-          delete theArray[i];
-        }
-      }
-      theArray.length = 0;
-    }
+    theArray = theArray || [];
+    theArray.forEach(function(elem) { elem.releaseAll(); delete elem; });
+    theArray.length = 0;
   };
 
   // [PRIVATE] Removes the object by the given `name` from `theArray`, and releases the native CL
-  // resources of that object.
+  // resources of that object.  Will fail if `theArray` is not an Array or contains anything else
+  // than CL.js objects.
   //
   function removeFromArray(theArray, name) {
+    theArray = theArray || [];
     for (var i=0; i < theArray.length; i++) {
       var theObject = theArray[i];
       if (theObject.name === name) {
-        if (theObject.releaseAll) {
-          theObject.releaseAll();
-        } else if (theObject.release) {
-          theObject.release();
-        }
+        theObject.releaseAll();
         theArray.splice(i, 1);
       }
     }
@@ -587,7 +592,7 @@
     return useAsync || xhr.responseText;
   };
 
-  // [PRIVATE] Copies all WebCL enums to the global CL namespace.
+  // [PRIVATE] Copies all WebCL enums to `theObject`.
   //
   function getEnums(theObject) {
     for (var enumName in WebCL) {
@@ -783,38 +788,6 @@ return image;
 this.buildProgram = function(parameters) {
 var program = this.createProgram(parameters);
 program.build(parameters);
-return program;
-};
-
-this.createProgram = function(parameters) {
-var props = {};
-switch (typeof(parameters)) {
-case 'object':
-props.uri = parameters.uri;
-props.source = parameters.source || CL.loadSource(parameters.uri);
-props.ptx = parameters.ptx;
-break;
-case 'string':
-props.uri = parameters.endsWith(".cl") ? parameters : null;
-props.source = CL.loadSource(props.uri) || parameters;
-break;
-default:
-throw "CL.Context.createProgram: Expected String or Object";
-}
-var program = null;
-if (props.source || props.ptx) {
-if (props.source) {
-program = self.peer.createProgram(props.source);
-program.source = props.source;
-} else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
-program = self.peer.createProgramWithBinary([self.device], [props.ptx]);
-program.ptx = props.ptx;
-}
-}
-program.platform = self.platform;
-program.device = self.device;
-program.context = self;
-self.programs.push(program);
 return program;
 };
 

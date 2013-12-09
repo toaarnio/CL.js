@@ -192,13 +192,17 @@ describe("CL", function() {
       buffer2M.release();
     });
 
+    it("must be able to create a Program from source string", function() {
+      var uri = 'kernels/rng.cl';
+      source = CL.loadSource(uri);
+      expect('ctx.createProgram(source) instanceof WebCLProgram').toEvalAs(true);
+      expect('ctx.createProgram({ source: source }) instanceof WebCLProgram').toEvalAs(true);
+    });
+
     it("must be able to create a Program from URI", function() {
-      var testFunc = function() {
-        var uri = 'kernels/rng.cl';
-        program = ctx.createProgram({ uri: uri });
-        expect('program instanceof WebCLProgram').toEvalAs(true);
-      } 
-      expect(testFunc).not.toThrow();
+      uri = 'kernels/rng.cl';
+      expect('ctx.createProgram(uri) instanceof WebCLProgram').toEvalAs(true);
+      expect('ctx.createProgram({ uri: uri }) instanceof WebCLProgram').toEvalAs(true);
     });
 
     it("must have separate resources on each instance", function() {
@@ -210,15 +214,16 @@ describe("CL", function() {
       expect(ctx2.buffers.length).toBe(1);
     });
 
-    it("Must be able to read and write Buffers", function() {
+    it("must be able to read and write Buffers", function() {
       var input = new Float32Array(512);
       input[12] = 3.14159;
       var output = new Float32Array(512);
       var queue = ctx.createCommandQueue();
-      var buffer1M = ctx.createBuffer({ size: 1024*1024 });
+      var buffer1 = ctx.createBuffer({ size: 1024*1024 });
+      var buffer2 = ctx.createBuffer({ size: 1024*1024 });
       function execute() {
-        queue.enqueueWriteBuffer(buffer1M, input);
-        queue.enqueueReadBuffer(buffer1M, output);
+        queue.enqueueWriteBuffer(buffer1, input);
+        queue.enqueueReadBuffer(buffer1, output);
         queue.finish();
         for (var i=0; i < input.length; i++) {
           if (input[i] !== output[i]) {
@@ -228,7 +233,8 @@ describe("CL", function() {
         }
       }
       expect(execute).not.toThrow();
-      buffer1M.release();
+      buffer2.release();
+      buffer1.release();
       queue.release();
     });
 
@@ -267,77 +273,34 @@ describe("CL", function() {
     });
 
     it("must be able to build a Program", function() {
-      var testFunc = function() {
-        program = ctx.createProgram({ source: sobel });
-        program.build();
-        expect('program instanceof WebCLProgram').toEvalAs(true);
-        expect('program.built').toEvalAs(true);
-      } 
-      expect(testFunc).not.toThrow();
+      program = ctx.createProgram(sobel).build();
+      expect('program instanceof WebCLProgram').toEvalAs(true);
+      expect('program.built').toEvalAs(true);
     });
 
     it("must be able to build a Program with compiler options", function() {
-      var testFunc = function() {
-        program = ctx.createProgram({ source: sobel });
-        program.build({ opts: '-cl-fast-relaxed-math' });
-        expect('program instanceof WebCLProgram').toEvalAs(true);
-        expect('program.built').toEvalAs(true);
-      } 
-      expect(testFunc).not.toThrow();
+      program = ctx.createProgram(sobel);
+      program.build({ opts: '-cl-fast-relaxed-math' });
+      expect('program instanceof WebCLProgram').toEvalAs(true);
+      expect('program.built').toEvalAs(true);
+    });
+
+    it("must be able to build a Program with '-D' defines", function() {
+      program = ctx.createProgram('kernels/defines.cl');
+      program.build({ defs: { FOO: true, BAR: 'baz' }});
+      expect('program instanceof WebCLProgram').toEvalAs(true);
+      expect('program.built').toEvalAs(true);
     });
 
     it("must be able to build a Kernel", function() {
-      var testFunc = function() {
-        program = ctx.createProgram({ source: sobel });
-        program.build();
-        kernel1 = program.createKernelsInProgram()[0];
-        expect('kernel1 instanceof WebCLKernel').toEvalAs(true);
-      }
-      expect(testFunc).not.toThrow();
-    });
-
-    it("must be able to build kernels from PTX source on NVIDIA GPUs", function() {
-      var testFunc = function() {
-        if (ctx.device.platform.vendor.indexOf("NVIDIA") !== -1 || ctx.device.vendor.indexOf("NVIDIA") !== -1) {
-          var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
-          var src = CL.loadSource(uri);
-          expect(src.length).toBeGreaterThan(0);
-          prog = ctx.createProgram({ ptx: src });
-          prog.build();
-          expect('prog instanceof WebCLProgram').toEvalAs(true);
-          expect('prog.createKernelsInProgram() instanceof Array').toEvalAs(true);
-          expect('prog.createKernelsInProgram()[0] instanceof WebCLKernel').toEvalAs(true);
-        }
-      }
-      expect(testFunc).not.toThrow();
-    });
-
-    // Excluded because querying PROGRAM_BINARY_SIZES crashes on Mac
-    //
-    it("Must not crash when querying Program binary sizes", function() {
-      var program = ctx.createProgram({ source: sobel });
+      program = ctx.createProgram({ source: sobel });
       program.build();
-      function getBinaries() {
-	      var sizes = program.getInfo(CL.PROGRAM_BINARY_SIZES);
-	      console.log("Size of binary executable in bytes: ", sizes[0]);
-	      return sizes;
-      }
-      expect(getBinaries).toThrow();
-    });
-
-    // Excluded because querying PROGRAM_BINARIES crashes on Mac
-    //
-    it("Must not be able to get Program binaries", function() {
-      var program = ctx.createProgram({ source: sobel });
-      program.build();
-      function getBinaries() {
-        return program.getInfo(CL.PROGRAM_BINARIES);
-      }
-      expect(getBinaries).toThrow();
+      kernel1 = program.createKernelsInProgram()[0];
+      expect('kernel1 instanceof WebCLKernel').toEvalAs(true);
     });
 
     it("Must be able to create a Kernel", function() {
-      var program = ctx.buildProgram({ source: sobel });
+      var program = ctx.createProgram({ source: sobel });
       program.build();
       var kernel = program.createKernelsInProgram()[0];
       expect(kernel instanceof WebCLKernel).toBeTruthy();
@@ -380,21 +343,18 @@ describe("CL", function() {
       var f32 = new Float32Array([1.0]);
 
       var src = CL.loadSource('kernels/argtypes.cl');
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = CL.DEVICES[d].contexts[0];
-        ctx.buildKernels({ source: src, opts: "-Werror" });
-        var kernel = ctx.getKernel('scalars');
-        var queue = ctx.createCommandQueue();
-        var resbuf = ctx.createBuffer({ size: 1 });
-        function execute() {
-          kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
-          queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
-          queue.enqueueReadBuffer(resbuf, result);
-          queue.finish();
-        }
-        expect(execute).not.toThrow();
-        expect(result[0]).toEqual(0);
+      var program = ctx.createProgram({ source: src, opts: "-Werror" }).build();
+      var kernel = program.getKernel('scalars');
+      var queue = ctx.createCommandQueue();
+      var resbuf = ctx.createBuffer({ size: 1 });
+      function execute() {
+        kernel.setArgs(resbuf, c, s, i, l, uc, us, ui, ul, f32);
+        queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
+        queue.enqueueReadBuffer(resbuf, result);
+        queue.finish();
       }
+      expect(execute).not.toThrow();
+      expect(result[0]).toEqual(0);
     });
 
     it("Must support all kernel argument vector types", function() {
@@ -409,31 +369,75 @@ describe("CL", function() {
       var ul = new Uint32Array([0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0, 0xffffffff, 0]);
       var f32 = new Float32Array([1.0, 1.0, 1.0, 1.0]);
       var src = CL.loadSource('kernels/argtypes.cl');
-      for (var d=0; d < CL.DEVICES.length; d++) {
-        var ctx = CL.DEVICES[d].contexts[0];
-        ctx.buildKernels({ source: src, opts: "-Werror" });
-        var kernel = ctx.getKernel('vectors');
-        var queue = ctx.createCommandQueue();
-        var resbuf = ctx.createBuffer({ size: 1 });
-        function execute() {
-          kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
-          queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
-          queue.enqueueReadBuffer(resbuf, result);
-          queue.finish();
+      var program = ctx.createProgram({ source: src });
+      program.build({ opts: "-Werror" });
+      //var kernel = ctx.getKernel('vectors');
+      var kernel = program.createKernelsInProgram()[1];
+      var queue = ctx.createCommandQueue();
+      var resbuf = ctx.createBuffer({ size: 1 });
+      function execute() {
+        kernel.setArgs(resbuf, c, s, i, uc, us, ui, f32);
+        queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
+        queue.enqueueReadBuffer(resbuf, result);
+        queue.finish();
         }
-        expect(execute).not.toThrow();
-        expect(result[0]).toEqual(0);
-      }
+      expect(execute).not.toThrow();
+      expect(result[0]).toEqual(0);
     });
 
   });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  //
+  // 
+  describe("Undocumented Features", function() {
+
+    beforeEach(function() {
+      sobel = CL.loadSource('kernels/sobel.cl');
+      ctx = cl.createContext({ device: SELECTED_DEVICE });
+    });
+
+    afterEach(function() {
+      ctx.release();
+    });
+    
+    it("can get Program binary sizes", function() {
+      var program = ctx.createProgram(sobel);
+      program.build();
+	    var sizes = program.getInfo(CL.PROGRAM_BINARY_SIZES);
+      expect(sizes[0]).toBeGreaterThan(0);
+    });
+
+    it("can get Program binaries", function() {
+      var program = ctx.createProgram(sobel);
+      program.build();
+      var binaries = program.getInfo(CL.PROGRAM_BINARIES);
+      expect(binaries[0].length).toBeGreaterThan(0);
+    });
+
+    if (SELECTED_DEVICE.vendor.startsWith("NVIDIA") || SELECTED_DEVICE.platform.vendor.startsWith("NVIDIA")) {
+      it("can build kernels from PTX source on NVIDIA GPUs", function() {
+        var uri = 'kernels/synthetic_case.O3.sm_21.ptx?ext=.cl';
+        var src = CL.loadSource(uri);
+        expect(src.length).toBeGreaterThan(0);
+        prog = ctx.createProgram({ ptx: src });
+        prog.build();
+        expect('prog instanceof WebCLProgram').toEvalAs(true);
+        expect('prog.createKernelsInProgram() instanceof Array').toEvalAs(true);
+        expect('prog.createKernelsInProgram()[0] instanceof WebCLKernel').toEvalAs(true);
+      });
+    }
+
+  });
+
 });
 
 //////////////////////////////////////////////////////////////////////////////
 //
 //
 // 
-xdescribe("Performance", function() {
+describe("Performance", function() {
 
   var CTX = null;
   var cl = null; 
