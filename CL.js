@@ -354,6 +354,18 @@
         }
       };
 
+      WebCLContext.prototype.getQueue = function(name) {
+        return getFromArray(this.queues, name);
+      };
+
+      WebCLContext.prototype.getBuffer = function(name) {
+        return getFromArray(this.buffers, name);
+      };
+
+      WebCLContext.prototype.getProgram = function(name) {
+        return getFromArray(this.programs, name);
+      };
+
       WebCLContext.prototype.releaseAll = function() {
         if (this.name === undefined) {
           this.release();
@@ -372,6 +384,7 @@
 
       WebCLCommandQueue.prototype._enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
       WebCLCommandQueue.prototype._enqueueReadBuffer = WebCLCommandQueue.prototype.enqueueReadBuffer;
+      WebCLCommandQueue.prototype._enqueueNDRangeKernel = WebCLCommandQueue.prototype.enqueueNDRangeKernel;
 
       WebCLCommandQueue.prototype.enqueueWriteBuffer = function(dstBuffer, srcArray) {
         var dstBuffer = (typeof dstBuffer === 'string') ? this.context.getBuffer(dstBuffer) : dstBuffer;
@@ -382,9 +395,24 @@
       };
 
       WebCLCommandQueue.prototype.enqueueReadBuffer = function(srcBuffer, dstArray) {
-        var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
+        var srcBuffer = (typeof srcBuffer === 'string') ? this.context.getBuffer(srcBuffer) : srcBuffer;
         var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
         var event = this._enqueueReadBuffer.call(this, srcBuffer, false, 0, numBytes, dstArray, []);
+        this.events.push(event);
+        return event;
+      };
+
+      WebCLCommandQueue.prototype.enqueueKernel = function(kernel, globalws, localws) {
+        var localws = (typeof localws === 'number') ? [localws] : (localws || []);
+        var globalws = (typeof globalws === 'number') ? [globalws] : globalws;
+        var kernel = (typeof kernel === 'string') ? this.context.getKernel(kernel) : kernel;
+        var event = this._enqueueNDRangeKernel(kernel, globalws.length, [], globalws, localws, []);
+        this.events.push(event);
+        return event;
+      };
+
+      WebCLCommandQueue.prototype.enqueueNDRangeKernel = function() {
+        var event = this._enqueueNDRangeKernel.apply(this, arguments);
         this.events.push(event);
         return event;
       };
@@ -437,8 +465,8 @@
           }
         } catch(e) {
           var info = this.getBuildLog();
-          console.log("[" + this.platform.vendor + "]", e, info);
-          throw e + info;
+          console.log("[" + this.platform.vendor + "]", e.msg);
+          throw e.name + " :: " + e.msg + " :: " + info;
         }
         return this;
 
@@ -469,8 +497,12 @@
         return log;
       };
 
+      WebCLProgram.prototype.getKernels = function() {
+        return this.kernels;
+      };
+
       WebCLProgram.prototype.getKernel = function(name) {
-        return getFromArray(this.kernels, name);
+        return name? getFromArray(this.kernels, name) : this.kernels[0];
       };
 
       WebCLProgram.prototype.releaseAll = function() {

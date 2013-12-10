@@ -1,7 +1,7 @@
-// result[0] = 0   if success
-// result[0] = -1  if error
+// result[0] = 0xdeadbeef   if success
+// result[0] = 0xffffffff   if error
 
-kernel void scalars(global int* result, 
+kernel void scalars(global uint* result, 
                     char c,
                     short s,
                     int i,
@@ -24,7 +24,7 @@ kernel void scalars(global int* result,
   ulong ulval = convert_ulong(ul);
   ulong fval = convert_ulong(as_uint(f));
   
-  result[0] = -1; // assume error
+  result[0] = 0xffffffff; // assume error
 
   if (cval  == 0x00000000000000ff &&
       sval  == 0x000000000000ffff &&
@@ -36,14 +36,14 @@ kernel void scalars(global int* result,
       ulval == 0x00000000ffffffff &&
       fval  == 0x000000003f800000)
     {
-      result[0] = 0;
+      result[0] = 0xdeadbeef;
     }
 }
 
-// result[0] = 0   if success
-// result[0] = -1  if error
+// result[0] = 0xdeadbeef   if success
+// result[0] = 0xffffffff   if error
 
-kernel void vectors(global int* result, 
+kernel void vectors(global uint* result, 
                     char4 c,
                     short4 s,
                     int4 i,
@@ -67,7 +67,7 @@ kernel void vectors(global int* result,
   //ulong ulval = convert_ulong(ul.s2);
   ulong fval = convert_ulong(as_uint(f.s2));
   
-  result[0] = -1; // assume error
+  result[0] = 0xffffffff; // assume error
 
   if (cval  == 0x00000000000000ff &&
       sval  == 0x000000000000ffff &&
@@ -79,6 +79,6 @@ kernel void vectors(global int* result,
       //ulval == 0x00000000ffffffff &&
       fval  == 0x000000003f800000)
     {
-      result[0] = 0;
+      result[0] = 0xdeadbeef;
     }
 }
