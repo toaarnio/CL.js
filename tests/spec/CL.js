@@ -28,6 +28,15 @@ describe("CL", function() {
       toEvalAs: function(result) {
         return eval(this.actual) === eval(result);
       },
+      toFail: function() {
+        var wrapper = new Function(this.actual);
+        try { wrapper() } catch(e) { return true; }
+        return false;
+      },
+      toReturn: function(result) {
+        var wrapper = new Function(this.actual);
+        return wrapper() === result;
+      },
     });
   });
 
@@ -134,18 +143,18 @@ describe("CL", function() {
     });
 
     it("must throw if there is any failure in synchronous mode", function() {
-      expect(CL.loadSource.bind(this)).toThrow();
-      expect(CL.loadSource.bind(this, '')).toThrow();
-      expect(CL.loadSource.bind(this, null)).toThrow();
-      expect(CL.loadSource.bind(this, 'invalidURI')).toThrow();
-      expect(CL.loadSource.bind(this, 'validButDoesNotExist.cl')).toThrow();
+      expect('CL.loadSource()').toFail();
+      expect('CL.loadSource("")').toFail();
+      expect('CL.loadSource(null)').toFail();
+      expect('CL.loadSource("invalidURI")').toFail();
+      expect('CL.loadSource("validButDoesNotExist.cl")').toFail();
     });
 
     it("must throw immediately if the URI is invalid in asynchronous mode", function() {
-      function callback() {};
-      expect(CL.loadSource.bind(this, '', callback)).toThrow();
-      expect(CL.loadSource.bind(this, null, callback)).toThrow();
-      expect(CL.loadSource.bind(this, 'invalidURI', callback)).toThrow();
+      callback = function() {};
+      expect('CL.loadSource("", callback)').toFail();
+      expect('CL.loadSource(null, callback)').toFail();
+      expect('CL.loadSource("invalidURI", callback)').toFail();
     });
 
     it("must return null if http request fails in asynchronous mode", function() {
@@ -236,20 +245,15 @@ describe("CL", function() {
       queue.release();
     });
 
-    it("must throw an exception on invalid input", function() {
-      var uri = 'kernels/rng.cl';
-      var src = CL.loadSource(uri);
-      expect(function() { ctx.buildKernel({ source: src, opts: '--invalid-option' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ source: 'foo' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ source: null }) }).toThrow();
-      expect(function() { ctx.buildKernel({ uri: 'foo.cl' }) }).toThrow();
-      expect(function() { ctx.buildKernel({ uri: null }) }).toThrow();
-      expect(function() { ctx.buildKernel('foo.cl') }).toThrow();
-      expect(function() { ctx.buildKernel('foo') }).toThrow();
-      expect(function() { ctx.buildKernel(null) }).toThrow();
-      expect(function() { ctx.buildKernel(0xdeadbeef) }).toThrow();
-      expect(function() { ctx.buildKernel({}) }).toThrow();
-      expect(function() { ctx.buildKernel() }).toThrow();
+    it("must throw on invalid input", function() {
+      expect('ctx.createProgram({ source: null })').toFail();
+      expect('ctx.createProgram({ uri: null })').toFail();
+      expect('ctx.createProgram({ uri: "foo.cl" })').toFail();
+      expect('ctx.createProgram("foo.cl")').toFail();
+      expect('ctx.createProgram(null)').toFail();
+      expect('ctx.createProgram(0xdeadbeef)').toFail();
+      expect('ctx.createProgram({})').toFail();
+      expect('ctx.createProgram()').toFail();
     });
   });
 
@@ -260,7 +264,6 @@ describe("CL", function() {
   describe("WebCLProgram", function() {
 
     beforeEach(function() {
-      sobel = CL.loadSource('kernels/sobel.cl');
       ctx = cl.createContext({ device: SELECTED_DEVICE });
     });
 
@@ -269,35 +272,31 @@ describe("CL", function() {
     });
 
     it("must be able to build a Program", function() {
-      program = ctx.createProgram(sobel).build();
+      program = ctx.createProgram('kernels/sobel.cl').build();
       expect('program instanceof WebCLProgram').toEvalAs(true);
-      expect('program.built').toEvalAs(true);
     });
 
     it("must be able to build a Program with compiler options", function() {
-      program = ctx.createProgram(sobel);
+      program = ctx.createProgram('kernels/sobel.cl');
       program.build({ opts: '-cl-fast-relaxed-math' });
       expect('program instanceof WebCLProgram').toEvalAs(true);
-      expect('program.built').toEvalAs(true);
     });
 
     it("must be able to pass '-D' defines to the compiler", function() {
       program = ctx.createProgram('kernels/defines.cl');
       program.build({ defs: { FOO: true, BAR: 'baz' }});
       expect('program instanceof WebCLProgram').toEvalAs(true);
-      expect('program.built').toEvalAs(true);
     });
 
     it("must be able to create a Kernel", function() {
-      program = ctx.createProgram(sobel).build();
-      kernel1 = program.getKernel('clSobel');
-      expect('kernel1 instanceof WebCLKernel').toEvalAs(true);
+      program = ctx.createProgram('kernels/sobel.cl').build();
+      kernel = program.getKernel('clSobel');
+      expect('kernel instanceof WebCLKernel').toEvalAs(true);
     });
 
     it("must be able to create a bunch of complex Kernels from a single source file", function() {
-      var scanKernel = CL.loadSource('kernels/scan_kernel.cl');
-      program = ctx.createProgram(scanKernel).build();
-      expect('program.built').toEvalAs(true);
+      program = ctx.createProgram('kernels/scan_kernel.cl').build();
+      expect('program instanceof WebCLProgram').toEvalAs(true);
       expect('program.getKernels().length').toEvalAs(5);
     });
 
@@ -385,15 +384,13 @@ describe("CL", function() {
     describe("Undocumented Features", function() {
 
       it("can get Program binary sizes", function() {
-        var program = ctx.createProgram(sobel);
-        program.build();
+        var program = ctx.createProgram('kernels/sobel.cl').build();
 	      var sizes = program.getInfo(CL.PROGRAM_BINARY_SIZES);
         expect(sizes[0]).toBeGreaterThan(0);
       });
 
       it("can get Program binaries", function() {
-        var program = ctx.createProgram(sobel);
-        program.build();
+        var program = ctx.createProgram('kernels/sobel.cl').build();
         var binaries = program.getInfo(CL.PROGRAM_BINARIES);
         expect(binaries[0].length).toBeGreaterThan(0);
       });
@@ -436,23 +433,32 @@ describe("CL", function() {
     });
 
     describe("KHR_fp64", function() {
-      it("must cause a compiler error if not explicitly enabled", function() {
-        var program = ctx.createProgram('kernels/fp64_default.cl');
-        expect(function() { program.build() }).toThrow();
-        expect(program.built).toBe(false);
+      it("must throw if disabled by #pragma", function() {
+        program = ctx.createProgram('kernels/fp64_disabled.cl');
+        expect('program.build()').toFail();
       });
 
-      it("must cause a compiler error if disabled by #pragma", function() {
-        var program = ctx.createProgram('kernels/fp64_disabled.cl');
-        expect(function() { program.build() }).toThrow();
-        expect(program.built).toBe(false);
+      it("must throw if not enabled by #pragma", function() {
+        program = ctx.createProgram('kernels/fp64_default.cl');
+        expect('program.build()').toFail();
       });
 
-      it("must not cause a compiler error if supported and enabled", function() {
+      it("must throw if not enabled by #pragma, even if enabled in host code", function() {
         if (enableExtension("khr_fp64")) {
-          var program = ctx.createProgram('kernels/fp64_enabled.cl');
-          expect(function() { program.build() }).not.toThrow();
-          expect(program.built).toBe(true);
+          program = ctx.createProgram('kernels/fp64_default.cl');
+          expect('program.build()').toFail();
+        }
+      });
+
+      it("must throw if enabled by #pragma, but not enabled in host code", function() {
+        program = ctx.createProgram('kernels/fp64_enabled.cl');
+        expect('program.build()').toFail();
+      });
+
+      it("must not throw if enabled by #pragma and in host code", function() {
+        if (enableExtension("khr_fp64")) {
+          program = ctx.createProgram('kernels/fp64_enabled.cl');
+          expect('program.build()').not.toFail();
         }
       });
 
@@ -460,15 +466,13 @@ describe("CL", function() {
         if (enableExtension("khr_fp64")) {
           var result = new Uint32Array([0xbabecafe]);
           var f64 = new Float64Array([1.0]);
-          var program = ctx.createProgram('kernels/fp64_enabled.cl');
-          expect(function() { program.build() }).not.toThrow();
-          expect(program.built).toBe(true);
-          var kernel = program.getKernel('fp64');
-          var queue = ctx.createCommandQueue();
-          var resbuf = ctx.createBuffer({ size: result.byteLength });
           function execute() {
+            var program = ctx.createProgram('kernels/fp64_enabled.cl');
+            var kernel = program.build().getKernel('fp64');
+            var queue = ctx.createCommandQueue();
+            var resbuf = ctx.createBuffer({ size: result.byteLength });
             kernel.setArgs(resbuf, f64);
-            queue.enqueueNDRangeKernel(kernel, 1, [], [1], [], []);
+            queue.enqueueKernel(kernel, 1);
             queue.enqueueReadBuffer(resbuf, result);
             queue.finish();
           }
@@ -479,11 +483,9 @@ describe("CL", function() {
     });
 
     describe("KHR_printf", function() {
-      it("must cause a compiler error if not explicitly enabled", function() {
-        var result = new Uint32Array([0xbabecafe]);
-        var program = ctx.createProgram('kernels/printf.cl');
-        expect(function() { program.build() }).toThrow();
-        expect(program.built).toBe(false);
+      it("must throw if not enabled by #pragma", function() {
+        program = ctx.createProgram('kernels/printf.cl');
+        expect('program.build()').toFail();
       });
     });
 

@@ -461,11 +461,11 @@
             }
           }
           if (!this.built) {
-            throw "Kernel compilation failed, although the compiler claims it succeeded.";
+            throw new WebCLException("BUILD_ERROR", "Kernel compilation failed, although the compiler claims it succeeded.");
           }
         } catch(e) {
           var info = this.getBuildLog();
-          console.log("[" + this.platform.vendor + "]", e.msg);
+          console.log("[" + this.platform.vendor + "]", e);
           throw e.name + " :: " + e.msg + " :: " + info;
         }
         return this;
