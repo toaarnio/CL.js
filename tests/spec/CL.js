@@ -80,7 +80,7 @@ describe("CL", function() {
   });
 
   it("must be able to create a Context on the selected Device", function() {
-    ctx1 = cl.createContext({ device: SELECTED_DEVICE });
+    ctx1 = cl.createContext({ devices: [CL.DEVICES[0]] });
     expect('ctx1 instanceof WebCLContext').toEvalAs(true);
   });
 
@@ -94,7 +94,7 @@ describe("CL", function() {
 
   it("must be able to create a Context on any Device", function() {
     CL.DEVICES.forEach(function(dev) {
-      var ctx = cl.createContext({ device: dev });
+      var ctx = cl.createContext({ devices: [dev] });
       expect(ctx instanceof WebCLContext).toBeTruthy();
       ctx.release();
     });

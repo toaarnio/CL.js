@@ -18,63 +18,89 @@
 // 
 describe("WebCL", function() {
 
-  it("must be defined", function() {
-    expect(WebCL).toBeDefined();
+  beforeEach(function() {
+    this.addMatchers({
+      toEvalAs: function(result) {
+        return eval(this.actual) === eval(result);
+      },
+      toFail: function() {
+        var wrapper = new Function(this.actual);
+        try { wrapper() } catch(e) { return true; }
+        return false;
+      },
+      toReturn: function(result) {
+        var wrapper = new Function(this.actual);
+        return wrapper() === result;
+      },
+    });
   });
 
-  it("must have all the expected classes", function() {
-    for (var className in expectedClasses) {
-      expect(window).toHaveFunction(className);
-    }
-  });
 
-  it("must have all the expected member functions", function() {
-    checkSignature('WebCL', true);
-    for (var className in expectedClasses) {
-      checkSignature(className, true);
-    }
-  });
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCL -> Signature
+  // 
+  describe("Signature", function() {
 
-  it("must not have any disallowed member functions", function() {
-    checkSignature('WebCL', false);
-    for (var className in expectedClasses) {
-      checkSignature(className, false);
-    }
-  });
+    it("must be defined", function() {
+      expect(WebCL).toBeDefined();
+    });
 
-  it("must have error code enums ranging from 0 to -64", function() {
-    for (var enumName in errorEnums) {
-      var actualValue = WebCL[enumName];
-      var expectedValue = errorEnums[enumName];
-      expect(actualValue).toBeDefined();
-      expect(actualValue).toEqual(expectedValue);
-    }
-  });
+    it("must have all the expected classes", function() {
+      for (var className in expectedClasses) {
+        expect(window).toHaveFunction(className);
+      }
+    });
 
-  it("must not have error code enums that have been removed", function() {
-    for (var enumName in removedErrorEnums) {
-      expect(WebCL[enumName]).not.toBeDefined();
-    }
-  });
+    it("must have all the expected member functions", function() {
+      checkSignature('WebCL', true);
+      for (var className in expectedClasses) {
+        checkSignature(className, true);
+      }
+    });
 
-  it("must have device info enums ranging from 0x1000 to 0x103D", function() {
-    for (var enumName in deviceInfoEnums) {
-      var actualValue = WebCL[enumName];
-      var expectedValue = deviceInfoEnums[enumName];
-      expect(actualValue).toBeDefined();
-      expect(actualValue).toEqual(expectedValue);
-    }
-  });
+    it("must not have any disallowed member functions", function() {
+      checkSignature('WebCL', false);
+      for (var className in expectedClasses) {
+        checkSignature(className, false);
+      }
+    });
 
-  it("must not have any disallowed device info enums", function() {
-    for (var enumName in removedDeviceInfoEnums) {
-      expect('WebCL').not.toHaveProperty(enumName);
-    }
+    it("must have error code enums ranging from 0 to -64", function() {
+      for (var enumName in errorEnums) {
+        var actualValue = WebCL[enumName];
+        var expectedValue = errorEnums[enumName];
+        expect(actualValue).toBeDefined();
+        expect(actualValue).toEqual(expectedValue);
+      }
+    });
+
+    it("must not have error code enums that have been removed", function() {
+      for (var enumName in removedErrorEnums) {
+        expect(WebCL[enumName]).not.toBeDefined();
+      }
+    });
+
+    it("must have device info enums ranging from 0x1000 to 0x103D", function() {
+      for (var enumName in deviceInfoEnums) {
+        var actualValue = WebCL[enumName];
+        var expectedValue = deviceInfoEnums[enumName];
+        expect(actualValue).toBeDefined();
+        expect(actualValue).toEqual(expectedValue);
+      }
+    });
+
+    it("must not have any disallowed device info enums", function() {
+      for (var enumName in removedDeviceInfoEnums) {
+        expect('WebCL').not.toHaveProperty(enumName);
+      }
+    });
+
   });
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLPlatform
+  // WebCL -> WebCLPlatform
   // 
   describe("WebCLPlatform", function() {
 
@@ -103,7 +129,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLDevice
+  // WebCL -> WebCLDevice
   // 
   describe("WebCLDevice", function() {
 
@@ -126,7 +152,6 @@ describe("WebCL", function() {
 
     it("must support the standard getInfo queries", function() {
       forEachDevice(function(device, deviceIndex) {
-        //console.info("Device["+deviceIndex+"]:");
         expect(function() { checkInfo(deviceInfoEnums, device) }).not.toThrow();
         expect(function() { checkInfo(removedDeviceInfoEnums, device) }).toThrow();
       });
@@ -134,8 +159,7 @@ describe("WebCL", function() {
         for (var enumName in enumList) {
           var enumVal = enumList[enumName];
           var property = device.getInfo(enumVal)
-          //console.info("  "+enumName+": "+property);
-          expect(property).not.toBeNull();
+          if (property === null) throw "getInfo(CL."+enumName+") returned null."
         }
       };
     });
@@ -143,7 +167,85 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLContext
+  // WebCL -> Context creation
+  // 
+  describe("Context creation", function() {
+
+    it("must work if properties === undefined", function() {
+      ctx1 = WebCL.createContext();
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties === null", function() {
+      ctx1 = WebCL.createContext(null);
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties === {}", function() {
+      ctx1 = WebCL.createContext({});
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.devices === null", function() {
+      ctx1 = WebCL.createContext({ devices: null });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.platform === null", function() {
+      ctx1 = WebCL.createContext({ platform: null });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.deviceType === DEVICE_TYPE_DEFAULT", function() {
+      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_DEFAULT });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.deviceType === DEVICE_TYPE_CPU", function() {
+      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_CPU });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.deviceType === DEVICE_TYPE_GPU", function() {
+      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_GPU });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.devices === [ device0 ]", function() {
+      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
+      ctx1 = WebCL.createContext({ devices: [defaultDevice] });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must work if properties.platform === platform0", function() {
+      var defaultPlatform = WebCL.getPlatforms()[0];
+      ctx1 = WebCL.createContext({ platform: defaultPlatform });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must ignore Platform if Device is given", function() {
+      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
+      ctx1 = WebCL.createContext({ devices: [defaultDevice], platform: "foobar" });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must ignore deviceType if Device is given", function() {
+      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
+      ctx1 = WebCL.createContext({ devices: [defaultDevice], deviceType: "foobar" });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+    it("must ignore deviceType if Platform is given", function() {
+      var defaultPlatform = WebCL.getPlatforms()[0];
+      ctx1 = WebCL.createContext({ platform: defaultPlatform, deviceType: "foobar" });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+    });
+
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
+  // WebCL -> WebCLContext
   // 
   describe("WebCLContext", function() {
 
@@ -220,7 +322,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCLCommandQueue
+  // WebCL -> WebCLCommandQueue
   // 
   describe("WebCLCommandQueue", function() {
 
@@ -228,7 +330,7 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // Crash tests
+  // WebCL -> Crash tests
   // 
   describe("Crash tests", function() {
 
@@ -236,10 +338,11 @@ describe("WebCL", function() {
       forEachDevice(function(device, deviceIndex) {
         ctx = WebCL.createContext({ devices: [device] });
         expect('ctx.release()').not.toThrow();
+        expect('ctx.release()').not.toThrow();
       });
     });
 
-    xit("must throw when trying to use an object that has been released", function() {
+    it("must throw when trying to use an object that has been released", function() {
       forEachDevice(function(device, deviceIndex) {
         ctx = WebCL.createContext({ devices: [device] });
         ctx.release();
@@ -288,12 +391,12 @@ describe("WebCL", function() {
   });
 
   function forEachDevice(callback) {
-    var SELECTED_DEVICES = [0];
+    var SELECTED_DEVICES = [];
     var plats = WebCL.getPlatforms();
     for (var i=0, deviceIndex=0; i < plats.length; i++) {
       var devices = plats[i].getDevices();
       for (var j=0; j < devices.length; j++, deviceIndex++) {
-        if (SELECTED_DEVICES.indexOf(deviceIndex) >= 0) {
+        if (SELECTED_DEVICES.length === 0 || SELECTED_DEVICES.indexOf(deviceIndex) >= 0) {
           callback(devices[j], deviceIndex, plats[i], i);
         }
       }
@@ -521,16 +624,21 @@ describe("WebCL", function() {
     INVALID_EVENT_WAIT_LIST                   : -57,
     INVALID_EVENT                             : -58,
     INVALID_OPERATION                         : -59,
+    //INVALID_GL_OBJECT                         : -60,  // moved to extension
     INVALID_BUFFER_SIZE                       : -61,
+    //INVALID_MIP_LEVEL                         : -62,  // moved to extension
     INVALID_GLOBAL_WORK_SIZE                  : -63,
     INVALID_PROPERTY                          : -64,
   };
 
   var removedErrorEnums = {
+    //INVALID_GL_OBJECT                        : -60,
+    //INVALID_MIP_LEVEL                        : -62,
   };
 
   var deviceInfoEnums = {
     DEVICE_TYPE                               : 0x1000,
+    DEVICE_VENDOR_ID                          : 0x1001,
     DEVICE_MAX_COMPUTE_UNITS                  : 0x1002,
     DEVICE_MAX_WORK_ITEM_DIMENSIONS           : 0x1003,
     DEVICE_MAX_WORK_GROUP_SIZE                : 0x1004,
@@ -541,6 +649,7 @@ describe("WebCL", function() {
     DEVICE_PREFERRED_VECTOR_WIDTH_LONG        : 0x1009,
     DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT       : 0x100A,
     //DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE      : 0x100B, // moved to extension
+    DEVICE_MAX_CLOCK_FREQUENCY                : 0x100C,
     DEVICE_ADDRESS_BITS                       : 0x100D,
     DEVICE_MAX_READ_IMAGE_ARGS                : 0x100E,
     DEVICE_MAX_WRITE_IMAGE_ARGS               : 0x100F,
@@ -582,12 +691,6 @@ describe("WebCL", function() {
     //DEVICE_HALF_FP_CONFIG                     : 0x1033, // moved to extension
     //DEVICE_PREFERRED_VECTOR_WIDTH_HALF        : 0x1034, // moved to extension
     DEVICE_HOST_UNIFIED_MEMORY                : 0x1035,
-    DEVICE_OPENCL_C_VERSION                   : 0x103D,
-  };
-
-  var optionalDeviceInfoEnums = {
-    DEVICE_VENDOR_ID                          : 0x1001,
-    DEVICE_MAX_CLOCK_FREQUENCY                : 0x100C,
     DEVICE_NATIVE_VECTOR_WIDTH_CHAR           : 0x1036,
     DEVICE_NATIVE_VECTOR_WIDTH_SHORT          : 0x1037,
     DEVICE_NATIVE_VECTOR_WIDTH_INT            : 0x1038,
@@ -595,18 +698,25 @@ describe("WebCL", function() {
     DEVICE_NATIVE_VECTOR_WIDTH_FLOAT          : 0x103A,
     //DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE         : 0x103B, // moved to extension
     //DEVICE_NATIVE_VECTOR_WIDTH_HALF           : 0x103C, // moved to extension
+    DEVICE_OPENCL_C_VERSION                   : 0x103D,
   };
 
   var removedDeviceInfoEnums = {
     DEVICE_MIN_DATA_TYPE_ALIGN_SIZE          : 0x101A,
+    //DEVICE_DOUBLE_FP_CONFIG                  : 0x1032,
+    //DEVICE_HALF_FP_CONFIG                    : 0x1033,
+    //DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE     : 0x100B,
+    //DEVICE_PREFERRED_VECTOR_WIDTH_HALF       : 0x1034,
+    //DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE        : 0x103B,
+    //DEVICE_NATIVE_VECTOR_WIDTH_HALF          : 0x103C,
   };
 
   var extensionEnums = {
     INVALID_GL_OBJECT                        : -60,
     INVALID_MIP_LEVEL                        : -62,
-    DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE     : 0x100B,
     DEVICE_DOUBLE_FP_CONFIG                  : 0x1032,
     DEVICE_HALF_FP_CONFIG                    : 0x1033,
+    DEVICE_PREFERRED_VECTOR_WIDTH_DOUBLE     : 0x100B,
     DEVICE_PREFERRED_VECTOR_WIDTH_HALF       : 0x1034,
     DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE        : 0x103B,
     DEVICE_NATIVE_VECTOR_WIDTH_HALF          : 0x103C,

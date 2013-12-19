@@ -173,26 +173,28 @@
 
   // ### cl.createContext() ###
   // 
-  // Creates a new Context for the given `device` and assigns the given `name` to the newly created
+  // Creates a new Context for the given `devices` and assigns the given `name` to the newly created
   // context:
   //
-  //     cl.createContext({ device: aDevice
+  //     cl.createContext({ devices: [aDevice]
   //                        name: 'arbitraryName' });
   //
   // Example:
   //
   //     var cl = new CL();
-  //     cl.createContext({ device: cl.devices[0], name: 'foo' });
+  //     cl.createContext({ devices: [cl.devices[0]], name: 'foo' });
   //
   CL.prototype.createContext = function(parameters) {
     parameters = parameters || {};
     parameters.name = parameters.name || "context" + this.contexts.length.toString();
-    parameters.device = parameters.device || this.DEVICES[0];
-    expect("a valid and available Device", parameters.device.isAvailable);
+    parameters.devices = parameters.devices || [parameters.device || this.DEVICES[0]];
+    delete parameters.device;
+    expect("a valid and available Device", parameters.devices[0].isAvailable);
 
-    var ctx = this._createContext({ devices: [parameters.device] });
+    console.log("CL.createContext: parameters.devices = ", parameters.devices);
+    var ctx = this._createContext(parameters);
     ctx.name = parameters.name;
-    ctx.device = parameters.device;
+    ctx.device = parameters.devices[0];
     ctx.platform = ctx.device.platform;
     ctx.queues = [];
     ctx.buffers = [];
