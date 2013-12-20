@@ -174,71 +174,132 @@ describe("WebCL", function() {
     it("must work if properties === undefined", function() {
       ctx1 = WebCL.createContext();
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
     it("must work if properties === null", function() {
       ctx1 = WebCL.createContext(null);
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
     it("must work if properties === {}", function() {
       ctx1 = WebCL.createContext({});
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
     it("must work if properties.devices === null", function() {
       ctx1 = WebCL.createContext({ devices: null });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
     it("must work if properties.platform === null", function() {
       ctx1 = WebCL.createContext({ platform: null });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
-    it("must work if properties.deviceType === DEVICE_TYPE_DEFAULT", function() {
+    it("must work if properties.deviceType === null", function() {
+      ctx1 = WebCL.createContext({ deviceType: null });
+      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
+    });
+
+    it("must work if properties.deviceType === DEFAULT", function() {
       ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_DEFAULT });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
-    it("must work if properties.deviceType === DEVICE_TYPE_CPU", function() {
+    it("must work if properties.deviceType === CPU || GPU", function() {
       ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_CPU });
-      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx2 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_GPU });
+      expect(ctx1 instanceof WebCLContext || ctx2 instanceof WebCLContext).toBeTruthy();
+      ctx1 && ctx1.release();
+      ctx2 && ctx2.release();
     });
 
-    it("must work if properties.deviceType === DEVICE_TYPE_GPU", function() {
-      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_GPU });
-      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
-    });
-
-    it("must work if properties.devices === [ device0 ]", function() {
+    it("must work if properties.devices === [ aDevice ]", function() {
       var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
       ctx1 = WebCL.createContext({ devices: [defaultDevice] });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
-    it("must work if properties.platform === platform0", function() {
+    it("must work if properties.platform === aPlatform", function() {
       var defaultPlatform = WebCL.getPlatforms()[0];
       ctx1 = WebCL.createContext({ platform: defaultPlatform });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
+    });
+
+    it("must work if properties.platform === aPlatform and deviceType === CPU || GPU", function() {
+      var defaultPlatform = WebCL.getPlatforms()[0];
+      ctx1 = WebCL.createContext({ platform: defaultPlatform, deviceType: WebCL.DEVICE_TYPE_CPU });
+      ctx2 = WebCL.createContext({ platform: defaultPlatform, deviceType: WebCL.DEVICE_TYPE_GPU });
+      expect(ctx1 instanceof WebCLContext || ctx2 instanceof WebCLContext).toBeTruthy();
+      ctx1 && ctx1.release();
+      ctx2 && ctx2.release();
     });
 
     it("must ignore Platform if Device is given", function() {
       var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
       ctx1 = WebCL.createContext({ devices: [defaultDevice], platform: "foobar" });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
     it("must ignore deviceType if Device is given", function() {
       var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
       ctx1 = WebCL.createContext({ devices: [defaultDevice], deviceType: "foobar" });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1.release();
     });
 
-    it("must ignore deviceType if Platform is given", function() {
+    it("must return null if there is no device of the given deviceType", function() {
       var defaultPlatform = WebCL.getPlatforms()[0];
-      ctx1 = WebCL.createContext({ platform: defaultPlatform, deviceType: "foobar" });
-      expect('ctx1 instanceof WebCLContext').toEvalAs(true);
+      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_ACCELERATOR });
+      expect(ctx1).toEqual(null);
+    });
+
+    it("must throw if properties === 'foobar'", function() {
+      expect('WebCL.createContext("foobar");').toFail();
+    });
+
+    it("must throw if properties.devices === 'foobar'", function() {
+      expect('WebCL.createContext({ devices: "foobar" });').toFail();
+    });
+
+    it("must throw if properties.platform === 'foobar'", function() {
+      expect('WebCL.createContext({ platform: "foobar" });').toFail();
+    });
+
+    it("must throw if properties.deviceType === 'foobar'", function() {
+      expect('WebCL.createContext({ deviceType: "foobar" });').toFail();
+    });
+
+    it("must throw if properties.devices === []", function() {
+      expect('WebCL.createContext({ devices: [] });').toFail();
+    });
+
+    it("must throw if properties.devices === [undefined]", function() {
+      expect('WebCL.createContext({ devices: [undefined] });').toFail();
+    });
+
+    it("must throw if properties.devices === [null]", function() {
+      expect('WebCL.createContext({ devices: [null] });').toFail();
+    });
+
+    it("must throw if properties.devices === [device, undefined]", function() {
+      defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
+      expect('WebCL.createContext({ devices: [defaultDevice, undefined] });').toFail();
+    });
+
+    it("must throw if properties.devices === [device, null]", function() {
+      defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
+      expect('WebCL.createContext({ devices: [defaultDevice, null] });').toFail();
     });
 
   });
