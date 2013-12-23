@@ -185,17 +185,11 @@
   //     cl.createContext({ devices: [cl.devices[0]], name: 'foo' });
   //
   CL.prototype.createContext = function(parameters) {
-    parameters = parameters || {};
-    parameters.name = parameters.name || "context" + this.contexts.length.toString();
-    parameters.devices = parameters.devices || [parameters.device || this.DEVICES[0]];
-    delete parameters.device;
-    expect("a valid and available Device", parameters.devices[0].isAvailable);
-
-    console.log("CL.createContext: parameters.devices = ", parameters.devices);
-    var ctx = this._createContext(parameters);
-    ctx.name = parameters.name;
-    ctx.device = parameters.devices[0];
-    ctx.platform = ctx.device.platform;
+    var parameters = parameters || {};
+    var ctx = this._createContext(arguments);
+    ctx.name = parameters.name || "aContext";
+    ctx.device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+    ctx.platform = ctx.device.getInfo(WebCL.DEVICE_PLATFORM);
     ctx.queues = [];
     ctx.buffers = [];
     ctx.programs = [];
@@ -368,6 +362,14 @@
         return getFromArray(this.programs, name);
       };
 
+      WebCLContext.prototype.release = function() {
+        try {
+          this._release.call(this);
+        } catch (e) {
+          console.log("WebCLContext.release failed: called more than once? TODO: FIX!");
+        }
+      };
+
       WebCLContext.prototype.releaseAll = function() {
         if (this.name === undefined) {
           this.release();
@@ -387,6 +389,7 @@
       WebCLCommandQueue.prototype._enqueueWriteBuffer = WebCLCommandQueue.prototype.enqueueWriteBuffer;
       WebCLCommandQueue.prototype._enqueueReadBuffer = WebCLCommandQueue.prototype.enqueueReadBuffer;
       WebCLCommandQueue.prototype._enqueueNDRangeKernel = WebCLCommandQueue.prototype.enqueueNDRangeKernel;
+      WebCLCommandQueue.prototype._release = WebCLCommandQueue.prototype.release;
 
       WebCLCommandQueue.prototype.enqueueWriteBuffer = function(dstBuffer, srcArray) {
         var dstBuffer = (typeof dstBuffer === 'string') ? this.context.getBuffer(dstBuffer) : dstBuffer;
@@ -423,12 +426,34 @@
         clearArray(this.events);
         this.release();
       };
+
+      WebCLCommandQueue.prototype.release = function() {
+        try {
+          this._release.call(this);
+        } catch (e) {
+          console.log("WebCLCommandQueue.release failed: called more than once? TODO: FIX!");
+        }
+      };
+
     })();
 
     // ### WebCLBuffer ###
     //
     (function augmentWebCLBuffer() {
-      WebCLBuffer.prototype.releaseAll = WebCLBuffer.prototype.release;
+      WebCLBuffer.prototype._release = WebCLBuffer.prototype.release;
+
+      WebCLBuffer.prototype.release = function() {
+        try {
+          this._release.call(this);
+        } catch (e) {
+          console.log("WebCLBuffer.release failed: called more than once? TODO: FIX!");
+        }
+      };
+
+      WebCLBuffer.prototype.releaseAll = function() {
+        this.release();
+      };
+
     })();
 
     // ### WebCLProgram ###
@@ -444,6 +469,7 @@
       WebCLProgram.prototype.platform = null;
 
       WebCLProgram.prototype._build = WebCLProgram.prototype.build;
+      WebCLProgram.prototype._release = WebCLProgram.prototype.release;
 
       WebCLProgram.prototype.build = function(parameters) {
         parameters = parameters || {};
@@ -507,6 +533,14 @@
         return name? getFromArray(this.kernels, name) : this.kernels[0];
       };
 
+      WebCLProgram.prototype.release = function() {
+        try {
+          this._release.call(this);
+        } catch (e) {
+          console.log("WebCLProgram.release failed: called more than once? TODO: FIX!");
+        }
+      };
+
       WebCLProgram.prototype.releaseAll = function() {
         clearArray(this.kernels);
         this.release();
@@ -526,6 +560,8 @@
       WebCLKernel.prototype.device = null;
       WebCLKernel.prototype.platform = null;
       WebCLKernel.prototype.releaseAll = WebCLKernel.prototype.release;
+
+      WebCLKernel.prototype._release = WebCLKernel.prototype.release;
 
       var _setArg = WebCLKernel.prototype.setArg;
 
@@ -550,6 +586,15 @@
           this.setArg(i, arguments[i]);
         }
       };
+
+      WebCLKernel.prototype.release = function() {
+        try {
+          this._release.call(this);
+        } catch (e) {
+          console.log("WebCLKernel.release failed: called more than once? TODO: FIX!");
+        }
+      };
+
     })();
 
     // ### WebCLEvent ###
@@ -736,209 +781,7 @@
 
 })();
 
-/* BEGIN OBSOLETE CODE
-
-// ### CL.releaseAll() ###
-//
-// Invalidates all WebCL objects and releases the memory and other
-// resources held up by their native OpenCL counterparts.  This is
-// crucially important, because JavaScript garbage collectors will
-// typically not release the resources in any reasonable time, not
-// even when the user reloads or leaves the page.
-//
-// By default, `CL.releaseAll` is called automatically when leaving
-// the page, i.e., when the `window.onbeforeunload` event fires, or
-// when an exception occurs in CL.js. If absolutely necessary, you
-// can disable this behavior for a specific CL instance when
-// creating it: `new CL({ cleanup: false })`.
-//
-CL.releaseAll = function() {
-for (var i=0; i < instances.length; i++) {
-instances[i].releaseAll();
-delete instances[i];
-}
-instances.length = 0;
-};
-
-
-function Context(parameters) {
-
-this.peer = "Context.peer: not yet initialized";
-this.platform = null;
-this.device = null;
-this.queues = [];
-this.buffers = [];
-this.images = [];
-this.programs = [];
-
-this.createCommandQueue = function(parameters) {
-parameters = parameters || {};
-var name = parameters.name || self.queues.length.toString();
-var queue = new CommandQueue();
-var props = IMP.PROFILE===true ? CL.QUEUE_PROFILING_ENABLE : null;
-queue.peer = self.peer.createCommandQueue(self.device, props);
-queue.context = self;
-queue.name = name;
-self.queues.push(queue);
-return queue;
-};
-
-this.createBuffer = function(parameters) {
-parameters = parameters || {};
-var byteLength = parameters.size || 1024;
-var memFlags = parameters.flags || CL.MEM_READ_WRITE;
-var name = parameters.name || self.buffers.length.toString();
-var buffer = self.peer.createBuffer(memFlags, byteLength);
-buffer.flags = memFlags;
-buffer.size = byteLength;
-buffer.context = self;
-buffer.name = name;
-buffer.releaseAll = function() { this.release(); };
-CL.removeFromArray(self.buffers, name);
-self.buffers.push(buffer);
-return buffer;
-};
-
-this.createImage = function(parameters) {
-parameters = parameters || {};
-var width = parameters.width || 256;
-var height = parameters.height || 256;
-var memFlags = parameters.flags || CL.MEM_READ_WRITE;
-var imgFormat = parameters.format || { channelOrder : CL.RGBA, channelDataType : CL.UNSIGNED_INT8 };
-var name = parameters.name || self.images.length.toString();
-var image = self.peer.createImage2D(memFlags, imgFormat, width, height, 0);
-image.flags = memFlags;
-image.format = imgFormat;
-image.width = width;
-image.height = height;
-image.context = self;
-image.name = name;
-image.releaseAll = function() { this.release(); };
-CL.removeFromArray(self.images, name);
-self.images.push(image);
-return image;
-};
-
-this.buildProgram = function(parameters) {
-var program = this.createProgram(parameters);
-program.build(parameters);
-return program;
-};
-
-this.buildKernels = function(parameters) {
-var program = self.buildProgram(parameters);
-return program.kernels;
-};
-
-this.buildKernel = function(parameters) {
-return self.buildKernels(parameters)[0];
-};
-
-this.getBuffer = function(name) {
-return CL.getFromArray(self.buffers, name);
-};
-
-this.getImage = function(name) {
-return CL.getFromArray(self.images, name);
-};
-
-this.getKernel = function(name) {
-for (var p=0; p < self.programs.length; p++) {
-var result = self.programs[p].getKernel(name);
-if (result !== null) {
-return result;
-}
-}
-return null;
-};
-
-this.getQueue = function(name) {
-return CL.getFromArray(self.queues, name);
-};
-
-this.releaseAll = function() {
-console.log("Context.releaseAll");
-CL.clearArray(self.programs);
-CL.clearArray(self.queues);
-CL.clearArray(self.buffers);
-self.peer.release();
-self.peer = "Context.peer: de-initialized";
-};
-
-IMP.addCleanupWrapper(this, "createCommandQueue", "Context");
-IMP.addCleanupWrapper(this, "createBuffer", "Context");
-IMP.addCleanupWrapper(this, "createImage", "Context");
-
-var self = this;
-};
-
-// ### CommandQueue ###
-// Instantiated by `Context.createCommandQueue()`
-//
-function CommandQueue(parameters) {
-this.peer = "CommandQueue.peer: not yet initialized";
-this.context = null;
-
-this.enqueueKernel = function(kernel, globalws, localws) {
-var localws = localws || [];
-var kernel = (typeof kernel === 'string') ? self.context.getKernel(kernel) : kernel;
-var event = self.peer.enqueueNDRangeKernel(kernel, globalws.length, [], globalws, localws, []);
-events.push(event);
-return event;
-};
-
-this.enqueueWriteBuffer = function(dstBuffer, srcArray) {
-var dstBuffer = (typeof dstBuffer === 'string') ? self.context.getBuffer(dstBuffer) : dstBuffer;
-var numBytes = Math.min(dstBuffer.size, srcArray.byteLength);
-var event = self.peer.enqueueWriteBuffer(dstBuffer, false, 0, numBytes, srcArray, []);
-events.push(event);
-return event;
-};
-
-this.enqueueReadBuffer = function(srcBuffer, dstArray) {
-var srcBuffer = (typeof srcBuffer === 'string') ? self.context.getBuffer(srcBuffer) : srcBuffer;
-var numBytes = Math.min(srcBuffer.size, dstArray.byteLength);
-var event = self.peer.enqueueReadBuffer(srcBuffer, false, 0, numBytes, dstArray, []);
-events.push(event);
-return event;
-};
-
-this.enqueueBarrier = function(eventWaitList) {
-if (eventWaitList && eventWaitList.length > 0) {
-self.peer.enqueueWaitForEvents(eventWaitList);
-} else {
-self.peer.enqueueBarrier();
-}
-var event = self.peer.enqueueMarker();
-events.push(event);
-return event;
-};
-
-this.finish = function() {
-self.peer.finish();
-};
-
-this.releaseAll = function() {
-if (self.peer.release) {
-self.peer.release();
-for (var i=0; i < events.length; i++) {
-events[i].release();
-delete events[i];
-}
-events.length = 0;
-self.peer = "CommandQueue.peer: de-initialized";
-}
-};
-
-var self = this;
-var events = [];
-
-IMP.addCleanupWrapper(this, "enqueueKernel", "CommandQueue");
-IMP.addCleanupWrapper(this, "enqueueWriteBuffer", "CommandQueue");
-IMP.addCleanupWrapper(this, "enqueueReadBuffer", "CommandQueue");
-IMP.addCleanupWrapper(this, "enqueueBarrier", "CommandQueue");
-IMP.addCleanupWrapper(this, "finish", "CommandQueue");
-};
+/** BEGIN OBSOLETE CODE
 
 function Imp() {
 
@@ -1030,93 +873,4 @@ var self = this;
 
 };
 
-// ### CL.Platform ###
-
-CL.Platform = function Platform(wrapped) {
-var self = this;
-self.prototype = wrapped.prototype;
-self._unwrap = function() { return wrapped };
-self.getInfo = wrapped.getInfo.bind(wrapped);
-self.NAME = self.getInfo(CL.PLATFORM_NAME);
-self.VERSION = self.getInfo(CL.PLATFORM_VERSION);
-self.VENDOR = self.getInfo(CL.PLATFORM_VENDOR);
-self.PROFILE = self.getInfo(CL.PLATFORM_PROFILE);
-self.EXTENSIONS = self.getInfo(CL.PLATFORM_EXTENSIONS).split(' ');
-self.getDevices = function() { 
-return wrapped.getDevices().map(function(d) { 
-return new CL.Device(d); 
-}); 
-};
-};
-
-// ### CL.Device ###
-
-CL.Device = function Device(wrapped) {
-var self = this;
-self.prototype = wrapped.prototype;
-self._unwrap = function() { return wrapped };
-self.getInfo = wrapped.getInfo.bind(wrapped);
-self.NAME = self.getInfo(CL.DEVICE_NAME);
-self.VERSION = self.getInfo(CL.DEVICE_VERSION);
-self.VENDOR = self.getInfo(CL.DEVICE_VENDOR);
-self.PROFILE = self.getInfo(CL.DEVICE_PROFILE);
-self.EXTENSIONS = self.getInfo(CL.DEVICE_EXTENSIONS).split(' ');
-};
-
-// ### CL.Context ###
-
-CL.Context = function Context(wrapped) {
-var self = this;
-self.prototype = wrapped.prototype;
-self._unwrap = function() { return wrapped };
-self.getInfo = wrapped.getInfo.bind(wrapped);
-self.release = wrapped.release.bind(wrapped);
-
-var _createProgram = WebCLContext.prototype.createProgram;
-var _createProgramWithBinary = WebCLContext.prototype.createProgramWithBinary;
-
-self.createProgram = function(parameters) {
-var props = {};
-parameters = parameters || {};
-switch (typeof(parameters)) {
-case 'object':
-props.uri = parameters.uri;
-props.source = parameters.source || CL.loadSource(parameters.uri);
-props.ptx = parameters.ptx;
-break;
-case 'string':
-props.uri = parameters.endsWith(".cl") ? parameters : null;
-props.source = CL.loadSource(props.uri) || parameters;
-break;
-default:
-throw "CL.Context.createProgram: Expected String or Object";
-}
-var program = null;
-if (props.source || props.ptx) {
-if (props.source) {
-program = _createProgram.call(self, props.source);
-program.source = props.source;
-} else if (props.ptx) {  // hidden feature: NVIDIA PTX binary support
-program = _createProgramWithBinary.call(self, [self.device._unwrap()], [props.ptx]);
-program.ptx = props.ptx;
-}
-}
-program.platform = self.platform;
-program.device = self.device;
-program.context = self;
-self.programs.push(program);
-return program;
-};
-
-self.releaseAll = function() {
-console.log("CL.Context.releaseAll");
-clearArray(self.programs);
-clearArray(self.queues);
-clearArray(self.buffers);
-self.release();
-};
-};
-
 */
-
-
