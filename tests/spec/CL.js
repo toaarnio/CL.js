@@ -88,13 +88,14 @@ describe("CL", function() {
     CL.PLATFORMS.forEach(function(plat) {
       var ctx = cl.createContext({ platform: plat });
       expect(ctx instanceof WebCLContext).toBeTruthy();
-      ctx.release;
+      ctx.release();
     });
   });
 
   it("must be able to create a Context on any Device", function() {
     CL.DEVICES.forEach(function(dev) {
       var ctx = cl.createContext({ devices: [dev] });
+      console.log("ctx instanceof WebCLContext: ", ctx instanceof WebCLContext);
       expect(ctx instanceof WebCLContext).toBeTruthy();
       ctx.release();
     });
@@ -272,7 +273,9 @@ describe("CL", function() {
     });
 
     it("must be able to build a Program", function() {
-      program = ctx.createProgram('kernels/sobel.cl').build();
+      program = ctx.createProgram('kernels/sobel.cl');
+      console.log("program = ", program);
+      program.build();
       expect('program instanceof WebCLProgram').toEvalAs(true);
     });
 
