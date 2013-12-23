@@ -167,9 +167,9 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCL -> Context creation
+  // WebCL -> createContext
   // 
-  describe("Context creation", function() {
+  describe("createContext", function() {
 
     it("must work if properties === undefined", function() {
       ctx1 = WebCL.createContext();
@@ -310,75 +310,158 @@ describe("WebCL", function() {
   // 
   describe("WebCLContext", function() {
 
-    it("must be able to create a Context on any Device", function() {
-      forEachDevice(function(device) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        expect(typeof ctx).toBe('object');
-        expect(ctx instanceof WebCLContext).toBeTruthy();
-        ctx.release();
-      });
-    });
-
     it("must support the standard getInfo queries", function() {
-      forEachDevice(function(device, deviceIndex) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        for (var enumName in contextInfoEnums) {
-          expect(ctx).toSupportInfoEnum(enumName);
-        }
-      });
+      var ctx = WebCL.createContext();
+      for (var enumName in contextInfoEnums) {
+        expect(ctx).toSupportInfoEnum(enumName);
+      }
     });
 
     it("must not support any disallowed getInfo queries", function() {
-      forEachDevice(function(device, deviceIndex) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        for (var enumName in removedContextInfoEnums) {
-          expect(ctx).not.toSupportInfoEnum(enumName);
-        }
-      });
+      var ctx = WebCL.createContext();
+      for (var enumName in removedContextInfoEnums) {
+        expect(ctx).not.toSupportInfoEnum(enumName);
+      }
     });
 
-    it("must be able to create a CommandQueue", function() {
-      forEachDevice(function(device) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        function createValidQueues() {
-          var queue1 = ctx.createCommandQueue();            // default
-          var queue2 = ctx.createCommandQueue(null);        // default
-          var queue3 = ctx.createCommandQueue(device);      // default
-          var queue4 = ctx.createCommandQueue(device, 0);   // default
-          var queue5 = ctx.createCommandQueue(device, 0x1); // out-of-order
-          var queue6 = ctx.createCommandQueue(device, 0x2); // profiling
-          var queue7 = ctx.createCommandQueue(device, 0x3); // combined
-          expect(queue1 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue2 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue3 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue4 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue5 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue6 instanceof WebCLCommandQueue).toBeTruthy();
-          expect(queue7 instanceof WebCLCommandQueue).toBeTruthy();
-          queue1.release();
-          queue2.release();
-          queue3.release();
-          queue4.release();
-          queue5.release();
-          queue6.release();
-          queue7.release();
-        };
-        expect(createValidQueues).not.toThrow();
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    // WebCL -> WebCLContext -> createCommandQueue
+    // 
+    describe("createCommandQueue", function() {
+
+      it("must work with an empty argument list", function() {
+        var ctx = WebCL.createContext();
+        queue = ctx.createCommandQueue();
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
         ctx.release();
       });
+      
+      it("must work if device === null", function() {
+        var ctx = WebCL.createContext();
+        queue = ctx.createCommandQueue(null);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+
+      it("must work if device === null, properties === 0", function() {
+        var ctx = WebCL.createContext();
+        queue = ctx.createCommandQueue(null, 0);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+
+      it("must work if device === aDevice", function() {
+        var ctx = WebCL.createContext();
+        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+
+      it("must work if device === aDevice, properties === 0", function() {
+        var ctx = WebCL.createContext();
+        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, 0);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+      
+      it("must work if device === undefined, properties === QUEUE_PROFILING_ENABLE", function() {
+        var ctx = WebCL.createContext();
+        queue = ctx.createCommandQueue(undefined, WebCL.QUEUE_PROFILING_ENABLE);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+      
+      it("must work if device === null, properties === QUEUE_PROFILING_ENABLE", function() {
+        var ctx = WebCL.createContext();
+        queue = ctx.createCommandQueue(null, WebCL.QUEUE_PROFILING_ENABLE);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+      
+      it("must work if device === aDevice, properties === QUEUE_PROFILING_ENABLE", function() {
+        var ctx = WebCL.createContext();
+        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, WebCL.QUEUE_PROFILING_ENABLE);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+      
+      it("must work if device === aDevice, properties === QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE", function() {
+        var ctx = WebCL.createContext();
+        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, WebCL.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+
+      it("must work if device === aDevice, properties === PROFILING | OUT_OF_ORDER", function() {
+        var ctx = WebCL.createContext();
+        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, WebCL.QUEUE_PROFILING_ENABLE | WebCL.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
+        queue.release();
+        ctx.release();
+      });
+
+      it("must throw if device === []", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createCommandQueue([])').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === 'foobar'", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createCommandQueue("foobar")').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === null, properties === []", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createCommandQueue(null, [])').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === null, properties === 'foobar'", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createCommandQueue(null, "foobar")').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === aDevice, properties === 'foobar'", function() {
+        ctx = WebCL.createContext();
+        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        expect('ctx.createCommandQueue(device, "foobar")').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === aDevice, properties === []", function() {
+        ctx = WebCL.createContext();
+        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        expect('ctx.createCommandQueue(device, [])').toFail();
+        ctx.release();
+      });
+
+      it("must throw if device === aDevice, properties === invalidEnum", function() {
+        ctx = WebCL.createContext();
+        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        expect('ctx.createCommandQueue(device, 0x4)').toFail();
+        ctx.release();
+      });
+
     });
 
-    it("must not allow creating a CommandQueue with invalid properties", function() {
-      forEachDevice(function(device) {
-        var ctx = WebCL.createContext({ devices: [device] });
-        expect('ctx.createCommandQueue("foo")').toThrow();
-        expect('ctx.createCommandQueue(device, 0x4)').toThrow();
-        expect('ctx.createCommandQueue(device, [])').toThrow();
-        expect('ctx.createCommandQueue(device, [0xff])').toThrow();
-        expect('ctx.createCommandQueue(device, device)').toThrow();
-        ctx.release();
-      });
-    });
   });
 
   //////////////////////////////////////////////////////////////////////////////
