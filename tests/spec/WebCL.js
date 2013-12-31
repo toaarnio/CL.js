@@ -25,9 +25,9 @@ describe("WebCL", function() {
       },
       toFail: function() {
         var wrapper = new Function(this.actual);
-        try { wrapper() } catch(e) { return true; }
+        try { wrapper() } catch(e) { console.log(""+e); return true; }
         return false;
-      },
+      } ,
       toReturn: function(result) {
         var wrapper = new Function(this.actual);
         return wrapper() === result;
@@ -310,11 +310,22 @@ describe("WebCL", function() {
   // 
   describe("WebCLContext", function() {
 
-    it("must support the standard getInfo queries", function() {
+    it("must support getInfo(CONTEXT_NUM_DEVICES)", function() {
       var ctx = WebCL.createContext();
-      for (var enumName in contextInfoEnums) {
-        expect(ctx).toSupportInfoEnum(enumName);
-      }
+      expect(ctx).toSupportInfoEnum("CONTEXT_NUM_DEVICES");
+      ctx.release();
+    });
+
+    it("must support getInfo(CONTEXT_DEVICES)", function() {
+      var ctx = WebCL.createContext();
+      expect(ctx).toSupportInfoEnum("CONTEXT_DEVICES");
+      ctx.release();
+    });
+
+    it("must support getInfo(CONTEXT_PROPERTIES)", function() {
+      var ctx = WebCL.createContext();
+      expect(ctx).toSupportInfoEnum("CONTEXT_PROPERTIES");
+      ctx.release();
     });
 
     it("must not support any disallowed getInfo queries", function() {
@@ -322,6 +333,7 @@ describe("WebCL", function() {
       for (var enumName in removedContextInfoEnums) {
         expect(ctx).not.toSupportInfoEnum(enumName);
       }
+      ctx.release();
     });
 
     //////////////////////////////////////////////////////////////////////////////
@@ -462,13 +474,204 @@ describe("WebCL", function() {
 
     });
 
+
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    // WebCL -> WebCLContext -> createProgram
+    // 
+
+    describe("createProgram", function() {
+
+      it("must work with dummy kernel source", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        expect('program instanceof WebCLProgram').toEvalAs(true);
+        program.release();
+        ctx.release();
+      });
+
+      it("must work with real kernel source", function() {
+        var ctx = WebCL.createContext();
+        var src = loadSource('kernels/rng.cl');
+        program = ctx.createProgram(src);
+        expect('program instanceof WebCLProgram').toEvalAs(true);
+        program.release();
+        ctx.release();
+      });
+
+      it("must throw if source === undefined", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createProgram(undefined)').toFail();
+        ctx.release();
+      });
+
+      it("must throw if source === null", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createProgram(null)').toFail();
+        ctx.release();
+      });
+
+      it("must throw if source === ''", function() {
+        ctx = WebCL.createContext();
+        expect('ctx.createProgram("")').toFail();
+        ctx.release();
+      });
+
+    });
+
   });
 
   //////////////////////////////////////////////////////////////////////////////
   //
-  // WebCL -> WebCLCommandQueue
+  // WebCL -> WebCLProgram
   // 
-  describe("WebCLCommandQueue", function() {
+  describe("WebCLProgram", function() {
+    
+    src = loadSource('kernels/rng.cl');
+
+    it("must support getInfo(PROGRAM_NUM_DEVICES)", function() {
+      var ctx = WebCL.createContext();
+      var program = ctx.createProgram(src);
+      var ndevices = program.getInfo(WebCL.PROGRAM_NUM_DEVICES);
+      expect(typeof ndevices).toEqual('number');
+      program.release();
+      ctx.release();
+    });
+
+    it("must support getInfo(PROGRAM_DEVICES)", function() {
+      var ctx = WebCL.createContext();
+      program = ctx.createProgram(src);
+      expect('program.getInfo(WebCL.PROGRAM_DEVICES) instanceof Array').toEvalAs(true);
+      program.release();
+      ctx.release();
+    });
+
+    it("must support getInfo(PROGRAM_CONTEXT)", function() {
+      var ctx = WebCL.createContext();
+      program = ctx.createProgram(src);
+      expect('program.getInfo(WebCL.PROGRAM_CONTEXT) instanceof WebCLContext').toEvalAs(true);
+      program.release();
+      ctx.release();
+    });
+
+    it("must support getInfo(PROGRAM_SOURCE)", function() {
+      var ctx = WebCL.createContext();
+      program = ctx.createProgram(src);
+      expect('program.getInfo(WebCL.PROGRAM_SOURCE) === src').toEvalAs(true);
+      program.release();
+      ctx.release();
+    });
+
+    //////////////////////////////////////////////////////////////////////////////
+    //
+    // WebCL -> WebCLProgram -> build
+    // 
+
+    describe("build", function() {
+
+      it("must work with an empty argument list", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        expect('program.build()').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if devices === null", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        expect('program.build(null)').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if devices === []", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        expect('program.build([])').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if devices === [ aDevice ]", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        expect('program.build(devices)').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if devices === [ aDevice ], options = null", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        expect('program.build(devices, null)').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if devices === [ aDevice ], options = ''", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        expect('program.build(devices, "")').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if options === '-valid-option'", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        [ '-D foo',
+          '-D foo=0xdeadbeef',
+          '-cl-opt-disable',
+          '-cl-single-precision-constant',
+          '-cl-denorms-are-zero',
+          '-cl-mad-enable',
+          '-cl-no-signed-zeros',
+          '-cl-unsafe-math-optimizations',
+          '-cl-finite-math-only',
+          '-cl-fast-relaxed-math',
+          '-Werror',
+          '-W',
+        ].forEach(function(val) {
+          expect('program.build(devices, "' + val + '")').not.toFail();
+        });
+        program.release();
+        ctx.release();
+      });
+
+      it("must work if options === '-cl-opt-disable -Werror'", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        expect('program.build(devices, "-cl-opt-disable -Werror")').not.toFail();
+        program.release();
+        ctx.release();
+      });
+
+      it("must throw if options === '-invalid-option'", function() {
+        var ctx = WebCL.createContext();
+        var src = "kernel void dummy() {}";
+        program = ctx.createProgram(src);
+        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        expect('program.build(devices, "-invalid-option")').toFail();
+        program.release();
+        ctx.release();
+      });
+
+    });
 
   });
 
@@ -478,7 +681,7 @@ describe("WebCL", function() {
   // 
   describe("Crash tests", function() {
 
-    it("must not not crash or throw when calling release() too many times", function()  {
+    it("must not not crash or throw when calling release() more than once", function()  {
       forEachDevice(function(device, deviceIndex) {
         ctx = WebCL.createContext({ devices: [device] });
         expect('ctx.release()').not.toThrow();
@@ -556,6 +759,52 @@ describe("WebCL", function() {
         expect(className).not.toHaveFunction(funcName);
       }
     }
+  };
+
+  // ### loadSource() ###
+  // 
+  // Loads a kernel source code file from the given `uri` via http GET, with a random query string
+  // appended to the uri to avoid obsolete copies getting served from some proxy or cache.  The
+  // given `uri` must have the suffix `.cl`.  Uses async XHR if a `callback` function is given.  If
+  // loading succeeds, returns the source code as the function return value (in synchronous mode),
+  // or passes it to the callback function (in async mode).  If anything goes wrong, throws an
+  // exception or passes `null` to the given `callback`.
+  //
+  function loadSource(uri, callback) {
+    var validURI = (typeof(uri) === 'string') && uri.endsWith('.cl');
+    if (validURI) {
+      return xhrLoad(uri, callback);
+    } else {
+      throw "loadSource: invalid URI.";
+    }
+  };
+
+  // [PRIVATE] Loads the given `uri` via http GET. Uses async XHR if a `callback` function is given.
+  // In synchronous mode, returns the http response text, or throws an exception in case of failure.
+  // In async mode, returns `true` after dispatching the http request, and passes the http response,
+  // or `null` in case of failure, as an argument to `callback`.
+  //
+  function xhrLoad(uri, callback) {
+    var useAsync = callback && callback instanceof Function;
+    var xhr = new XMLHttpRequest();
+    if (useAsync) {
+      xhr.timeout = 1000;
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+          if (xhr.status === 200) {
+            callback(xhr.responseText);
+          } else {
+            callback(null);
+          }
+        }
+      };
+    }
+    xhr.open("GET", uri + "?id="+ Math.random(), useAsync);
+    xhr.send();
+    if (!useAsync && xhr.status !== 200) {
+      throw "loadSource: failed to load " + uri;
+    }
+    return useAsync || xhr.responseText;
   };
 
   //////////////////////////////////////////////////////////////
@@ -873,7 +1122,7 @@ describe("WebCL", function() {
   };
 
   var removedContextInfoEnums = {
-    //CONTEXT_REFERENCE_COUNT : 0x1080,  // uncomment when un-implemented
+    CONTEXT_REFERENCE_COUNT : 0x1080,
   };
 });
 
