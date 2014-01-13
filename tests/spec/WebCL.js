@@ -12,11 +12,19 @@
  * Author: Tomi Aarnio, 2013
  */
 
+LOG_INFO = false;
+LOG_ERROR = true;
+LOG_DEBUG = true;
+
 //////////////////////////////////////////////////////////////////////////////
 //
 // Static properties
 // 
 describe("WebCL", function() {
+  
+  var INFO = LOG_INFO ? console.info : new Function();
+  var ERROR = LOG_ERROR ? console.error : new Function();
+  var DEBUG = LOG_DEBUG ? console.log : new Function();
 
   beforeEach(function() {
     this.addMatchers({
@@ -25,7 +33,7 @@ describe("WebCL", function() {
       },
       toFail: function() {
         var wrapper = new Function(this.actual);
-        try { wrapper() } catch(e) { console.log(""+e); return true; }
+        try { wrapper() } catch(e) { ERROR(""+e); return true; }
         return false;
       } ,
       toReturn: function(result) {
@@ -42,8 +50,8 @@ describe("WebCL", function() {
   // 
   describe("Signature", function() {
 
-    it("must be defined", function() {
-      expect(WebCL).toBeDefined();
+    it("must have the singleton 'webcl' object", function() {
+      expect(webcl).toBeDefined();
     });
 
     it("must have all the expected classes", function() {
@@ -53,14 +61,14 @@ describe("WebCL", function() {
     });
 
     it("must have all the expected member functions", function() {
-      checkSignature('WebCL', true);
+      checkSignature('webcl', true);
       for (var className in expectedClasses) {
         checkSignature(className, true);
       }
     });
 
     it("must not have any disallowed member functions", function() {
-      checkSignature('WebCL', false);
+      checkSignature('webcl', false);
       for (var className in expectedClasses) {
         checkSignature(className, false);
       }
@@ -68,7 +76,7 @@ describe("WebCL", function() {
 
     it("must have error code enums ranging from 0 to -64", function() {
       for (var enumName in errorEnums) {
-        var actualValue = WebCL[enumName];
+        var actualValue = webcl[enumName];
         var expectedValue = errorEnums[enumName];
         expect(actualValue).toBeDefined();
         expect(actualValue).toEqual(expectedValue);
@@ -77,13 +85,13 @@ describe("WebCL", function() {
 
     it("must not have error code enums that have been removed", function() {
       for (var enumName in removedErrorEnums) {
-        expect(WebCL[enumName]).not.toBeDefined();
+        expect(webcl[enumName]).not.toBeDefined();
       }
     });
 
     it("must have device info enums ranging from 0x1000 to 0x103D", function() {
       for (var enumName in deviceInfoEnums) {
-        var actualValue = WebCL[enumName];
+        var actualValue = webcl[enumName];
         var expectedValue = deviceInfoEnums[enumName];
         expect(actualValue).toBeDefined();
         expect(actualValue).toEqual(expectedValue);
@@ -92,7 +100,7 @@ describe("WebCL", function() {
 
     it("must not have any disallowed device info enums", function() {
       for (var enumName in removedDeviceInfoEnums) {
-        expect('WebCL').not.toHaveProperty(enumName);
+        expect('webcl').not.toHaveProperty(enumName);
       }
     });
 
@@ -105,22 +113,27 @@ describe("WebCL", function() {
   describe("WebCLPlatform", function() {
 
     it("must have at least one instance", function() {
-      expect(WebCL.getPlatforms().length).toBeGreaterThan(0);
+      expect(webcl.getPlatforms().length).toBeGreaterThan(0);
     });
 
     it("must support the standard getInfo queries", function() {
-      var plats = WebCL.getPlatforms();
+      var plats = webcl.getPlatforms();
       function checkInfo() {
         for (var i=0; i < plats.length; i++) {
-          var name = plats[i].getInfo(WebCL.PLATFORM_NAME)
-          var vendor = plats[i].getInfo(WebCL.PLATFORM_VENDOR)
-          var version = plats[i].getInfo(WebCL.PLATFORM_VERSION)
-          var profile = plats[i].getInfo(WebCL.PLATFORM_PROFILE)
-          var extensions = plats[i].getInfo(WebCL.PLATFORM_EXTENSIONS)
+          var name = plats[i].getInfo(webcl.PLATFORM_NAME)
+          var vendor = plats[i].getInfo(webcl.PLATFORM_VENDOR)
+          var version = plats[i].getInfo(webcl.PLATFORM_VERSION)
+          var profile = plats[i].getInfo(webcl.PLATFORM_PROFILE)
+          var extensions = plats[i].getInfo(webcl.PLATFORM_EXTENSIONS)
           expect(name.length).toBeGreaterThan(0);
           expect(vendor.length).toBeGreaterThan(0);
           expect(version.length).toBeGreaterThan(0);
           expect(profile.length).toBeGreaterThan(0);
+          INFO("Platform["+i+"]:");
+          INFO("  " + version);
+          INFO("  " + profile);
+          INFO("  " + vendor);
+          INFO("  " + name);
         }
       };
       expect(checkInfo).not.toThrow();
@@ -134,18 +147,18 @@ describe("WebCL", function() {
   describe("WebCLDevice", function() {
 
     it("must have at least one instance on each Platform", function() {
-      var platforms = WebCL.getPlatforms();
+      var platforms = webcl.getPlatforms();
       for (var p=0; p < platforms.length; p++) {
         expect(platforms[p].getDevices().length).toBeGreaterThan(0);
       }
     });
 
     it("must not have any instances that are not actually available", function() {
-      var platforms = WebCL.getPlatforms();
+      var platforms = webcl.getPlatforms();
       for (var p=0; p < platforms.length; p++) {
         var devices = platforms[p].getDevices();
         for (var d=0; d < devices.length; d++) {
-          expect(devices[d].getInfo(WebCL.DEVICE_AVAILABLE)).toEqual(true);
+          expect(devices[d].getInfo(webcl.DEVICE_AVAILABLE)).toEqual(true);
         }
       }
     });
@@ -160,6 +173,7 @@ describe("WebCL", function() {
           var enumVal = enumList[enumName];
           var property = device.getInfo(enumVal)
           if (property === null) throw "getInfo(CL."+enumName+") returned null."
+          INFO(enumName + ": " + property);
         }
       };
     });
@@ -172,134 +186,134 @@ describe("WebCL", function() {
   describe("createContext", function() {
 
     it("must work if properties === undefined", function() {
-      ctx1 = WebCL.createContext();
+      ctx1 = webcl.createContext();
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties === null", function() {
-      ctx1 = WebCL.createContext(null);
+      ctx1 = webcl.createContext(null);
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties === {}", function() {
-      ctx1 = WebCL.createContext({});
+      ctx1 = webcl.createContext({});
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.devices === null", function() {
-      ctx1 = WebCL.createContext({ devices: null });
+      ctx1 = webcl.createContext({ devices: null });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.platform === null", function() {
-      ctx1 = WebCL.createContext({ platform: null });
+      ctx1 = webcl.createContext({ platform: null });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.deviceType === null", function() {
-      ctx1 = WebCL.createContext({ deviceType: null });
+      ctx1 = webcl.createContext({ deviceType: null });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.deviceType === DEFAULT", function() {
-      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_DEFAULT });
+      ctx1 = webcl.createContext({ deviceType: webcl.DEVICE_TYPE_DEFAULT });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.deviceType === CPU || GPU", function() {
-      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_CPU });
-      ctx2 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_GPU });
+      ctx1 = webcl.createContext({ deviceType: webcl.DEVICE_TYPE_CPU });
+      ctx2 = webcl.createContext({ deviceType: webcl.DEVICE_TYPE_GPU });
       expect(ctx1 instanceof WebCLContext || ctx2 instanceof WebCLContext).toBeTruthy();
       ctx1 && ctx1.release();
       ctx2 && ctx2.release();
     });
 
     it("must work if properties.devices === [ aDevice ]", function() {
-      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
-      ctx1 = WebCL.createContext({ devices: [defaultDevice] });
+      var defaultDevice = webcl.getPlatforms()[0].getDevices()[0];
+      ctx1 = webcl.createContext({ devices: [defaultDevice] });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.platform === aPlatform", function() {
-      var defaultPlatform = WebCL.getPlatforms()[0];
-      ctx1 = WebCL.createContext({ platform: defaultPlatform });
+      var defaultPlatform = webcl.getPlatforms()[0];
+      ctx1 = webcl.createContext({ platform: defaultPlatform });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must work if properties.platform === aPlatform and deviceType === CPU || GPU", function() {
-      var defaultPlatform = WebCL.getPlatforms()[0];
-      ctx1 = WebCL.createContext({ platform: defaultPlatform, deviceType: WebCL.DEVICE_TYPE_CPU });
-      ctx2 = WebCL.createContext({ platform: defaultPlatform, deviceType: WebCL.DEVICE_TYPE_GPU });
+      var defaultPlatform = webcl.getPlatforms()[0];
+      ctx1 = webcl.createContext({ platform: defaultPlatform, deviceType: webcl.DEVICE_TYPE_CPU });
+      ctx2 = webcl.createContext({ platform: defaultPlatform, deviceType: webcl.DEVICE_TYPE_GPU });
       expect(ctx1 instanceof WebCLContext || ctx2 instanceof WebCLContext).toBeTruthy();
       ctx1 && ctx1.release();
       ctx2 && ctx2.release();
     });
 
     it("must ignore Platform if Device is given", function() {
-      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
-      ctx1 = WebCL.createContext({ devices: [defaultDevice], platform: "foobar" });
+      var defaultDevice = webcl.getPlatforms()[0].getDevices()[0];
+      ctx1 = webcl.createContext({ devices: [defaultDevice], platform: "foobar" });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must ignore deviceType if Device is given", function() {
-      var defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
-      ctx1 = WebCL.createContext({ devices: [defaultDevice], deviceType: "foobar" });
+      var defaultDevice = webcl.getPlatforms()[0].getDevices()[0];
+      ctx1 = webcl.createContext({ devices: [defaultDevice], deviceType: "foobar" });
       expect('ctx1 instanceof WebCLContext').toEvalAs(true);
       ctx1.release();
     });
 
     it("must return null if there is no device of the given deviceType", function() {
-      var defaultPlatform = WebCL.getPlatforms()[0];
-      ctx1 = WebCL.createContext({ deviceType: WebCL.DEVICE_TYPE_ACCELERATOR });
+      var defaultPlatform = webcl.getPlatforms()[0];
+      ctx1 = webcl.createContext({ deviceType: webcl.DEVICE_TYPE_ACCELERATOR });
       expect(ctx1).toEqual(null);
     });
 
     it("must throw if properties === 'foobar'", function() {
-      expect('WebCL.createContext("foobar");').toFail();
+      expect('webcl.createContext("foobar");').toFail();
     });
 
     it("must throw if properties.devices === 'foobar'", function() {
-      expect('WebCL.createContext({ devices: "foobar" });').toFail();
+      expect('webcl.createContext({ devices: "foobar" });').toFail();
     });
 
     it("must throw if properties.platform === 'foobar'", function() {
-      expect('WebCL.createContext({ platform: "foobar" });').toFail();
+      expect('webcl.createContext({ platform: "foobar" });').toFail();
     });
 
     it("must throw if properties.deviceType === 'foobar'", function() {
-      expect('WebCL.createContext({ deviceType: "foobar" });').toFail();
+      expect('webcl.createContext({ deviceType: "foobar" });').toFail();
     });
 
     it("must throw if properties.devices === []", function() {
-      expect('WebCL.createContext({ devices: [] });').toFail();
+      expect('webcl.createContext({ devices: [] });').toFail();
     });
 
     it("must throw if properties.devices === [undefined]", function() {
-      expect('WebCL.createContext({ devices: [undefined] });').toFail();
+      expect('webcl.createContext({ devices: [undefined] });').toFail();
     });
 
     it("must throw if properties.devices === [null]", function() {
-      expect('WebCL.createContext({ devices: [null] });').toFail();
+      expect('webcl.createContext({ devices: [null] });').toFail();
     });
 
     it("must throw if properties.devices === [device, undefined]", function() {
-      defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
-      expect('WebCL.createContext({ devices: [defaultDevice, undefined] });').toFail();
+      defaultDevice = webcl.getPlatforms()[0].getDevices()[0];
+      expect('webcl.createContext({ devices: [defaultDevice, undefined] });').toFail();
     });
 
     it("must throw if properties.devices === [device, null]", function() {
-      defaultDevice = WebCL.getPlatforms()[0].getDevices()[0];
-      expect('WebCL.createContext({ devices: [defaultDevice, null] });').toFail();
+      defaultDevice = webcl.getPlatforms()[0].getDevices()[0];
+      expect('webcl.createContext({ devices: [defaultDevice, null] });').toFail();
     });
 
   });
@@ -311,25 +325,25 @@ describe("WebCL", function() {
   describe("WebCLContext", function() {
 
     it("must support getInfo(CONTEXT_NUM_DEVICES)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       expect(ctx).toSupportInfoEnum("CONTEXT_NUM_DEVICES");
       ctx.release();
     });
 
     it("must support getInfo(CONTEXT_DEVICES)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       expect(ctx).toSupportInfoEnum("CONTEXT_DEVICES");
       ctx.release();
     });
 
     it("must support getInfo(CONTEXT_PROPERTIES)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       expect(ctx).toSupportInfoEnum("CONTEXT_PROPERTIES");
       ctx.release();
     });
 
     it("must not support any disallowed getInfo queries", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       for (var enumName in removedContextInfoEnums) {
         expect(ctx).not.toSupportInfoEnum(enumName);
       }
@@ -343,7 +357,7 @@ describe("WebCL", function() {
     describe("createCommandQueue", function() {
 
       it("must work with an empty argument list", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         queue = ctx.createCommandQueue();
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
@@ -351,7 +365,7 @@ describe("WebCL", function() {
       });
       
       it("must work if device === null", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         queue = ctx.createCommandQueue(null);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
@@ -359,7 +373,7 @@ describe("WebCL", function() {
       });
 
       it("must work if device === null, properties === 0", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         queue = ctx.createCommandQueue(null, 0);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
@@ -367,8 +381,8 @@ describe("WebCL", function() {
       });
 
       it("must work if device === aDevice", function() {
-        var ctx = WebCL.createContext();
-        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        var ctx = webcl.createContext();
+        var device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
         queue = ctx.createCommandQueue(device);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
@@ -376,8 +390,8 @@ describe("WebCL", function() {
       });
 
       it("must work if device === aDevice, properties === 0", function() {
-        var ctx = WebCL.createContext();
-        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        var ctx = webcl.createContext();
+        var device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
         queue = ctx.createCommandQueue(device, 0);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
@@ -385,89 +399,89 @@ describe("WebCL", function() {
       });
       
       it("must work if device === undefined, properties === QUEUE_PROFILING_ENABLE", function() {
-        var ctx = WebCL.createContext();
-        queue = ctx.createCommandQueue(undefined, WebCL.QUEUE_PROFILING_ENABLE);
+        var ctx = webcl.createContext();
+        queue = ctx.createCommandQueue(undefined, webcl.QUEUE_PROFILING_ENABLE);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
         ctx.release();
       });
       
       it("must work if device === null, properties === QUEUE_PROFILING_ENABLE", function() {
-        var ctx = WebCL.createContext();
-        queue = ctx.createCommandQueue(null, WebCL.QUEUE_PROFILING_ENABLE);
+        var ctx = webcl.createContext();
+        queue = ctx.createCommandQueue(null, webcl.QUEUE_PROFILING_ENABLE);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
         ctx.release();
       });
       
       it("must work if device === aDevice, properties === QUEUE_PROFILING_ENABLE", function() {
-        var ctx = WebCL.createContext();
-        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
-        queue = ctx.createCommandQueue(device, WebCL.QUEUE_PROFILING_ENABLE);
+        var ctx = webcl.createContext();
+        var device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, webcl.QUEUE_PROFILING_ENABLE);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
         ctx.release();
       });
       
       it("must work if device === aDevice, properties === QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE", function() {
-        var ctx = WebCL.createContext();
-        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
-        queue = ctx.createCommandQueue(device, WebCL.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        var ctx = webcl.createContext();
+        var device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, webcl.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
         ctx.release();
       });
 
       it("must work if device === aDevice, properties === PROFILING | OUT_OF_ORDER", function() {
-        var ctx = WebCL.createContext();
-        var device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
-        queue = ctx.createCommandQueue(device, WebCL.QUEUE_PROFILING_ENABLE | WebCL.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
+        var ctx = webcl.createContext();
+        var device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
+        queue = ctx.createCommandQueue(device, webcl.QUEUE_PROFILING_ENABLE | webcl.QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE);
         expect('queue instanceof WebCLCommandQueue').toEvalAs(true);
         queue.release();
         ctx.release();
       });
 
       it("must throw if device === []", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createCommandQueue([])').toFail();
         ctx.release();
       });
 
       it("must throw if device === 'foobar'", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createCommandQueue("foobar")').toFail();
         ctx.release();
       });
 
       it("must throw if device === null, properties === []", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createCommandQueue(null, [])').toFail();
         ctx.release();
       });
 
       it("must throw if device === null, properties === 'foobar'", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createCommandQueue(null, "foobar")').toFail();
         ctx.release();
       });
 
       it("must throw if device === aDevice, properties === 'foobar'", function() {
-        ctx = WebCL.createContext();
-        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        ctx = webcl.createContext();
+        device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
         expect('ctx.createCommandQueue(device, "foobar")').toFail();
         ctx.release();
       });
 
       it("must throw if device === aDevice, properties === []", function() {
-        ctx = WebCL.createContext();
-        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        ctx = webcl.createContext();
+        device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
         expect('ctx.createCommandQueue(device, [])').toFail();
         ctx.release();
       });
 
       it("must throw if device === aDevice, properties === invalidEnum", function() {
-        ctx = WebCL.createContext();
-        device = ctx.getInfo(WebCL.CONTEXT_DEVICES)[0];
+        ctx = webcl.createContext();
+        device = ctx.getInfo(webcl.CONTEXT_DEVICES)[0];
         expect('ctx.createCommandQueue(device, 0x4)').toFail();
         ctx.release();
       });
@@ -483,7 +497,7 @@ describe("WebCL", function() {
     describe("createProgram", function() {
 
       it("must work with dummy kernel source", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
         expect('program instanceof WebCLProgram').toEvalAs(true);
@@ -492,7 +506,7 @@ describe("WebCL", function() {
       });
 
       it("must work with real kernel source", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = loadSource('kernels/rng.cl');
         program = ctx.createProgram(src);
         expect('program instanceof WebCLProgram').toEvalAs(true);
@@ -501,19 +515,19 @@ describe("WebCL", function() {
       });
 
       it("must throw if source === undefined", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createProgram(undefined)').toFail();
         ctx.release();
       });
 
       it("must throw if source === null", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createProgram(null)').toFail();
         ctx.release();
       });
 
       it("must throw if source === ''", function() {
-        ctx = WebCL.createContext();
+        ctx = webcl.createContext();
         expect('ctx.createProgram("")').toFail();
         ctx.release();
       });
@@ -531,34 +545,36 @@ describe("WebCL", function() {
     src = loadSource('kernels/rng.cl');
 
     it("must support getInfo(PROGRAM_NUM_DEVICES)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       var program = ctx.createProgram(src);
-      var ndevices = program.getInfo(WebCL.PROGRAM_NUM_DEVICES);
+      var ndevices = program.getInfo(webcl.PROGRAM_NUM_DEVICES);
       expect(typeof ndevices).toEqual('number');
       program.release();
       ctx.release();
     });
 
     it("must support getInfo(PROGRAM_DEVICES)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       program = ctx.createProgram(src);
-      expect('program.getInfo(WebCL.PROGRAM_DEVICES) instanceof Array').toEvalAs(true);
+      expect('program.getInfo(webcl.PROGRAM_DEVICES) instanceof Array').toEvalAs(true);
       program.release();
       ctx.release();
     });
 
     it("must support getInfo(PROGRAM_CONTEXT)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       program = ctx.createProgram(src);
-      expect('program.getInfo(WebCL.PROGRAM_CONTEXT) instanceof WebCLContext').toEvalAs(true);
+      ctxQueriedFromProgram = program.getInfo(webcl.PROGRAM_CONTEXT);
+      expect('ctxQueriedFromProgram instanceof WebCLContext').toEvalAs(true);
+      ctxQueriedFromProgram.release();
       program.release();
       ctx.release();
     });
 
     it("must support getInfo(PROGRAM_SOURCE)", function() {
-      var ctx = WebCL.createContext();
+      var ctx = webcl.createContext();
       program = ctx.createProgram(src);
-      expect('program.getInfo(WebCL.PROGRAM_SOURCE) === src').toEvalAs(true);
+      expect('program.getInfo(webcl.PROGRAM_SOURCE) === src').toEvalAs(true);
       program.release();
       ctx.release();
     });
@@ -571,7 +587,7 @@ describe("WebCL", function() {
     describe("build", function() {
 
       it("must work with an empty argument list", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
         expect('program.build()').not.toFail();
@@ -580,7 +596,7 @@ describe("WebCL", function() {
       });
 
       it("must work if devices === null", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
         expect('program.build(null)').not.toFail();
@@ -589,7 +605,7 @@ describe("WebCL", function() {
       });
 
       it("must work if devices === []", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
         expect('program.build([])').not.toFail();
@@ -598,40 +614,40 @@ describe("WebCL", function() {
       });
 
       it("must work if devices === [ aDevice ]", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         expect('program.build(devices)').not.toFail();
         program.release();
         ctx.release();
       });
 
       it("must work if devices === [ aDevice ], options = null", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         expect('program.build(devices, null)').not.toFail();
         program.release();
         ctx.release();
       });
 
       it("must work if devices === [ aDevice ], options = ''", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         expect('program.build(devices, "")').not.toFail();
         program.release();
         ctx.release();
       });
 
       it("must work if options === '-valid-option'", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         [ '-D foo',
           '-D foo=0xdeadbeef',
           '-cl-opt-disable',
@@ -642,8 +658,8 @@ describe("WebCL", function() {
           '-cl-unsafe-math-optimizations',
           '-cl-finite-math-only',
           '-cl-fast-relaxed-math',
+          '-w',
           '-Werror',
-          '-W',
         ].forEach(function(val) {
           expect('program.build(devices, "' + val + '")').not.toFail();
         });
@@ -652,20 +668,20 @@ describe("WebCL", function() {
       });
 
       it("must work if options === '-cl-opt-disable -Werror'", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         expect('program.build(devices, "-cl-opt-disable -Werror")').not.toFail();
         program.release();
         ctx.release();
       });
 
       it("must throw if options === '-invalid-option'", function() {
-        var ctx = WebCL.createContext();
+        var ctx = webcl.createContext();
         var src = "kernel void dummy() {}";
         program = ctx.createProgram(src);
-        devices = ctx.getInfo(WebCL.CONTEXT_DEVICES);
+        devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
         expect('program.build(devices, "-invalid-option")').toFail();
         program.release();
         ctx.release();
@@ -681,19 +697,19 @@ describe("WebCL", function() {
   // 
   describe("Crash tests", function() {
 
-    it("must not not crash or throw when calling release() more than once", function()  {
+    it("must not crash or throw when calling release() more than once", function()  {
       forEachDevice(function(device, deviceIndex) {
-        ctx = WebCL.createContext({ devices: [device] });
-        expect('ctx.release()').not.toThrow();
+        ctx = webcl.createContext({ devices: [device] });
+        ctx.release();
         expect('ctx.release()').not.toThrow();
       });
     });
 
     it("must throw when trying to use an object that has been released", function() {
       forEachDevice(function(device, deviceIndex) {
-        ctx = WebCL.createContext({ devices: [device] });
+        ctx = webcl.createContext({ devices: [device] });
         ctx.release();
-        expect('ctx.getInfo(WebCL.CONTEXT_NUM_DEVICES)').toThrow();
+        expect('ctx.getInfo(webcl.CONTEXT_NUM_DEVICES)').toThrow();
       });
     });
   });
@@ -730,7 +746,7 @@ describe("WebCL", function() {
         var obj = this.actual;
         var val = undefined;
         try {
-          val = obj.getInfo(WebCL[name]);
+          val = obj.getInfo(webcl[name]);
         } catch (e) {}
         return (val !== undefined);
       },
@@ -739,7 +755,7 @@ describe("WebCL", function() {
 
   function forEachDevice(callback) {
     var SELECTED_DEVICES = [];
-    var plats = WebCL.getPlatforms();
+    var plats = webcl.getPlatforms();
     for (var i=0, deviceIndex=0; i < plats.length; i++) {
       var devices = plats[i].getDevices();
       for (var j=0; j < devices.length; j++, deviceIndex++) {
@@ -810,6 +826,7 @@ describe("WebCL", function() {
   //////////////////////////////////////////////////////////////
 
   var expectedClasses = {
+    WebCL : true,
     WebCLPlatform : true,
     WebCLDevice : true,
     WebCLContext : true,
