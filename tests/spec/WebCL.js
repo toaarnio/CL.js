@@ -693,6 +693,22 @@ describe("WebCL", function() {
 
   //////////////////////////////////////////////////////////////////////////////
   //
+  // WebCL -> Kernel language
+  // 
+  describe("Kernel language", function() {
+    
+    it("must not allow 'goto'", function() {
+      src = loadSource('kernels/goto.cl');
+      var ctx = webcl.createContext();
+      program = ctx.createProgram(src);
+      devices = ctx.getInfo(webcl.CONTEXT_DEVICES);
+      expect('program.build(devices)').toFail();
+    });
+
+  });
+
+  //////////////////////////////////////////////////////////////////////////////
+  //
   // WebCL -> Crash tests
   // 
   describe("Crash tests", function() {
